@@ -1,0 +1,8 @@
+Copie ici le dossier de ton Theme Hospital (celui qui contient le dossier "Data").
+
+Exemples qui fonctionnent :
+  theme_hospital/Data/...
+  theme_hospital/Theme Hospital/Data/...
+
+Tu peux l'acheter sur GOG (https://www.gog.com). La démo gratuite fonctionne aussi.
+Les fichiers de ce dossier ne sont pas suivis par git.

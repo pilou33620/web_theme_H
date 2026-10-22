@@ -1,0 +1,7 @@
+__pycache__/
+logs/
+donnees/
+vendor/
+adresse-reseau.txt
+theme_hospital/*
+!theme_hospital/LISEZMOI.txt

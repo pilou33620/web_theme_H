@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
+<meta name="apple-mobile-web-app-title" content="Theme Hospital">
+<title>Theme Hospital</title>
+<style>
+  :root { --fond: #0b0f12; --texte: #e8eef2; --accent: #3aa6d8; --verre: rgba(20,28,34,.62); }
+  html, body { margin: 0; height: 100%; background: var(--fond); color: var(--texte);
+    font: 16px/1.4 system-ui, -apple-system, sans-serif; overflow: hidden; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #ecran { position: fixed; inset: 0; }
+  #surcouche { position: fixed; inset: 0; z-index: 2; touch-action: none; }
+  #curseur { position: fixed; left: 0; top: 0; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+    border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #000;
+    pointer-events: none; z-index: 3; opacity: 0; transition: opacity .25s; }
+  #curseur.visible { opacity: .85; }
+  #curseur.droit { border-color: #ffb347; }
+
+  .touche { position: fixed; z-index: 4; width: 56px; height: 56px; border-radius: 14px; border: 1px solid rgba(255,255,255,.25);
+    background: var(--verre); color: var(--texte); font: 600 15px system-ui, sans-serif; touch-action: none;
+    display: flex; align-items: center; justify-content: center; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .touche.on { background: var(--accent); color: #04202e; }
+  .large { width: auto; min-width: 56px; padding: 0 14px; }
+  #croix { position: fixed; z-index: 4; left: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 4px; }
+  #croix .touche { position: static; }
+  #actions { position: fixed; z-index: 4; right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom));
+    display: flex; gap: 8px; align-items: flex-end; }
+  #actions .touche { position: static; }
+  body.sans-touches #croix, body.sans-touches #actions .masquable { display: none; }
+
+  #menu { position: fixed; z-index: 5; right: calc(12px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom));
+    background: rgba(18,24,29,.96); border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 6px; display: none; min-width: 230px; }
+  #menu.ouvert { display: block; }
+  #menu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--texte);
+    font: inherit; padding: 12px 14px; border-radius: 8px; }
+  #menu button:active { background: rgba(255,255,255,.12); }
+
+  #carte { position: fixed; inset: 0; z-index: 6; display: none; align-items: center; justify-content: center; background: rgba(11,15,18,.92); }
+  #carte.ouverte { display: flex; }
+  #carte div { max-width: 460px; padding: 28px; text-align: center; }
+  #carte h1 { margin: 0 0 10px; font-size: 22px; }
+  #carte p { margin: 0 0 18px; opacity: .85; }
+  #carte button { font: 600 16px system-ui, sans-serif; padding: 12px 22px; border-radius: 10px; border: 0; background: var(--accent); color: #04202e; }
+</style>
+</head>
+<body>
+<div id="ecran"></div>
+<div id="surcouche"></div>
+<div id="curseur"></div>
+
+<div id="croix">
+  <span></span><button class="touche" id="haut" aria-label="Haut">▲</button><span></span>
+  <button class="touche" id="gauche" aria-label="Gauche">◀</button><span></span><button class="touche" id="droite" aria-label="Droite">▶</button>
+  <span></span><button class="touche" id="bas" aria-label="Bas">▼</button><span></span>
+</div>
+
+<div id="actions">
+  <button class="touche large masquable" id="clicdroit">Clic droit</button>
+  <button class="touche large masquable" id="pause">Pause</button>
+  <button class="touche large masquable" id="echap">Échap</button>
+  <button class="touche" id="menubtn" aria-label="Menu">☰</button>
+</div>
+
+<div id="menu">
+  <button id="m-plein">Plein écran</button>
+  <button id="m-touches">Masquer les touches</button>
+  <button id="m-redem">Redémarrer le jeu</button>
+  <button id="m-stop">Arrêter le jeu</button>
+</div>
+
+<div id="carte"><div><h1 id="c-titre"></h1><p id="c-texte"></p><button id="c-bouton"></button></div></div>
+
+<script type="module">
+const $ = s => document.querySelector(s);
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+let RFB = null, rfb = null, entree = null;
+let L = 1280, H = 720;                     // taille de l'écran du jeu
+let droit = false;                         // « Clic droit » armé pour le prochain appui
+let stylet = 0;                            // les doigts sont ignorés jusqu'à cet instant (paume)
+
+// ---------------------------------------------------------------- état du jeu et connexion
+
+async function api(chemin, post) {
+  try { const r = await fetch(chemin, { method: post ? 'POST' : 'GET', cache: 'no-store' }); return await r.json(); }
+  catch { return null; }
+}
+
+function carte(titre, texte, bouton, action) {
+  $('#c-titre').textContent = titre; $('#c-texte').textContent = texte;
+  const b = $('#c-bouton'); b.style.display = bouton ? '' : 'none';
+  if (bouton) { b.textContent = bouton; b.onclick = action; }
+  $('#carte').classList.add('ouverte');
+}
+
+function deconnecter() {
+  if (rfb) { try { rfb.disconnect(); } catch {} rfb = null; }
+  if (entree) { try { entree.close(); } catch {} entree = null; }
+}
+
+async function connecter() {
+  if (!RFB) {
+    try { RFB = (await import('/novnc/core/rfb.js')).default; }
+    catch { carte('noVNC introuvable', 'Installe-le : sudo apt install novnc, puis relance le serveur.'); return; }
+  }
+  $('#ecran').replaceChildren();
+  rfb = new RFB($('#ecran'), `${proto}://${location.host}/vnc`, { wsProtocols: ['binary'] });
+  rfb.viewOnly = true;           // les gestes passent par notre propre canal (/input)
+  rfb.scaleViewport = true;
+  rfb.background = '#000';
+  rfb.qualityLevel = 6; rfb.compressionLevel = 2;
+  const courant = rfb;
+  courant.addEventListener('disconnect', () => { if (rfb === courant) deconnecter(); });
+  ouvrirEntree();
+}
+
+function ouvrirEntree() {
+  const ws = new WebSocket(`${proto}://${location.host}/input`);
+  entree = ws;
+  ws.onclose = () => { if (entree === ws) { entree = null; if (rfb) setTimeout(ouvrirEntree, 1000); } };
+}
+
+async function boucle() {
+  const s = await api('/api/status');
+  if (!s) carte('Serveur injoignable', 'La page réessaie toute seule…');
+  else {
+    L = s.largeur; H = s.hauteur;
+    if (s.etat === 'en_marche') { $('#carte').classList.remove('ouverte'); if (!rfb) connecter(); }
+    else {
+      deconnecter();
+      const demarrer = () => { api('/api/demarrer', true); carte('Démarrage du jeu…', 'Quelques secondes.'); };
+      if (s.etat === 'demarrage') carte('Démarrage du jeu…', 'Quelques secondes.');
+      else if (s.etat === 'erreur') carte('Le jeu n\'a pas démarré', s.message, 'Réessayer', demarrer);
+      else carte('Jeu arrêté', s.message || 'Theme Hospital n\'est pas lancé.', 'Démarrer', demarrer);
+    }
+  }
+  setTimeout(boucle, 2000);
+}
+
+function envoyer(o) { if (entree && entree.readyState === 1) entree.send(JSON.stringify(o)); }
+
+// ---------------------------------------------------------------- gestes : doigt, stylet, souris
+
+function pos(e) {
+  const c = document.querySelector('#ecran canvas');
+  if (!c) return null;
+  const r = c.getBoundingClientRect();
+  return { x: Math.round((e.clientX - r.left) / r.width * L), y: Math.round((e.clientY - r.top) / r.height * H) };
+}
+
+let dernierMove = null;
+function pointeur(x, y, b) {            // b : bit 0 gauche, bit 1 milieu, bit 2 droit (norme VNC)
+  if (b === 0) {                         // simple déplacement : au plus un par image
+    if (!dernierMove) requestAnimationFrame(() => { envoyer(dernierMove); dernierMove = null; });
+    dernierMove = { t: 'p', x, y, b };
+  } else { dernierMove = null; envoyer({ t: 'p', x, y, b }); }
+}
+const attendre = ms => new Promise(r => setTimeout(r, ms));
+async function clic(x, y, b) { pointeur(x, y, b); await attendre(50); pointeur(x, y, 0); }
+
+function boutonArme() {                  // bouton à utiliser pour un appui doigt/stylet ; « Clic droit » ne sert qu'une fois
+  const b = droit ? 4 : 1;
+  armer(false);
+  return b;
+}
+function armer(v) {
+  droit = v; $('#clicdroit').classList.toggle('on', v); $('#curseur').classList.toggle('droit', v);
+}
+const versVnc = b => (b & 1 ? 1 : 0) | (b & 4 ? 2 : 0) | (b & 2 ? 4 : 0);   // boutons du navigateur -> VNC
+
+let curseurTimer = 0;
+function curseur(e, permanent) {
+  const c = $('#curseur');
+  c.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+  c.classList.add('visible');
+  clearTimeout(curseurTimer);
+  if (!permanent) curseurTimer = setTimeout(() => c.classList.remove('visible'), 1200);
+}
+
+const doigts = new Map();                // doigts posés (pointerId -> état)
+let geste = null;                        // appui à deux doigts en cours
+let stylePose = 0;                       // masque tenu par le stylet ou la souris
+
+const S = $('#surcouche');
+S.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+S.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const p = pos(e); if (!p) return;
+  if (e.pointerType === 'touch') {
+    if (performance.now() < stylet) return;                       // paume posée pendant l'écriture au stylet
+    S.setPointerCapture(e.pointerId);
+    const d = { x0: p.x, y0: p.y, cx: e.clientX, cy: e.clientY, p, t0: performance.now(), presse: false, ignore: false };
+    doigts.set(e.pointerId, d);
+    curseur(e);
+    if (doigts.size === 1) pointeur(p.x, p.y, 0);
+    else {                                                        // deuxième doigt : possible clic droit
+      geste = { t0: performance.now(), bouge: false, p: [...doigts.values()][0].p };
+      for (const f of doigts.values()) { if (f.presse) pointeur(f.p.x, f.p.y, 0); f.ignore = true; }
+    }
+    return;
+  }
+  S.setPointerCapture(e.pointerId);
+  if (e.pointerType === 'pen') { stylet = performance.now() + 1500; curseur(e); }
+  stylePose = e.pointerType === 'pen' ? ((e.buttons & 2) ? 4 : boutonArme()) : versVnc(e.buttons);
+  pointeur(p.x, p.y, stylePose);
+});
+
+S.addEventListener('pointermove', e => {
+  const p = pos(e); if (!p) return;
+  if (e.pointerType === 'touch') {
+    const d = doigts.get(e.pointerId); if (!d) return;
+    d.p = p; curseur(e);
+    if (geste) { if (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) > 14) geste.bouge = true; return; }
+    if (d.ignore) return;
+    if (!d.presse && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) > 10) {   // glisser : on appuie là où le doigt s'est posé
+      d.presse = true; d.b = boutonArme();
+      pointeur(d.x0, d.y0, d.b);
+    }
+    if (d.presse) pointeur(p.x, p.y, d.b);
+    return;
+  }
+  if (e.pointerType === 'pen') { stylet = performance.now() + 1500; curseur(e, e.buttons === 0); }
+  pointeur(p.x, p.y, e.buttons ? (e.pointerType === 'pen' ? stylePose : versVnc(e.buttons)) : 0);
+});
+
+function lever(e) {
+  const p = pos(e);
+  if (e.pointerType === 'touch') {
+    const d = doigts.get(e.pointerId); if (!d) return;
+    doigts.delete(e.pointerId);
+    if (geste) {
+      if (!doigts.size) {
+        if (!geste.bouge && performance.now() - geste.t0 < 500 && e.type === 'pointerup') clic(geste.p.x, geste.p.y, 4);
+        geste = null;
+      }
+      return;
+    }
+    if (d.ignore) return;
+    if (d.presse) pointeur(d.p.x, d.p.y, 0);
+    else clic(d.x0, d.y0, boutonArme());                          // simple tape
+    return;
+  }
+  if (p) pointeur(p.x, p.y, 0);
+  stylePose = 0;
+}
+S.addEventListener('pointerup', lever);
+S.addEventListener('pointercancel', lever);
+S.addEventListener('pointerleave', e => { if (e.pointerType === 'pen') $('#curseur').classList.remove('visible'); });
+
+// ---------------------------------------------------------------- touches à l'écran
+
+function maintenue(sel, keysym) {        // appuyée tant que le doigt reste posé (défilement de la carte)
+  const b = $(sel);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('on'); envoyer({ t: 'k', k: keysym, d: 1 }); });
+  const fin = () => { if (b.classList.contains('on')) { b.classList.remove('on'); envoyer({ t: 'k', k: keysym, d: 0 }); } };
+  b.addEventListener('pointerup', fin); b.addEventListener('pointercancel', fin);
+}
+function tapee(sel, keysym) {
+  const b = $(sel);
+  b.addEventListener('pointerdown', async e => {
+    e.preventDefault(); b.classList.add('on');
+    envoyer({ t: 'k', k: keysym, d: 1 }); await attendre(60); envoyer({ t: 'k', k: keysym, d: 0 });
+    b.classList.remove('on');
+  });
+}
+maintenue('#haut', 0xff52); maintenue('#bas', 0xff54); maintenue('#gauche', 0xff51); maintenue('#droite', 0xff53);
+tapee('#pause', 0x70); tapee('#echap', 0xff1b);
+$('#clicdroit').addEventListener('pointerdown', e => { e.preventDefault(); armer(!droit); });
+
+// ---------------------------------------------------------------- menu
+
+const menu = $('#menu');
+$('#menubtn').addEventListener('pointerdown', e => { e.preventDefault(); menu.classList.toggle('ouvert'); });
+S.addEventListener('pointerdown', () => menu.classList.remove('ouvert'), true);
+$('#m-touches').onclick = () => {
+  const cache = document.body.classList.toggle('sans-touches');
+  $('#m-touches').textContent = cache ? 'Afficher les touches' : 'Masquer les touches';
+  menu.classList.remove('ouvert');
+};
+const plein = document.documentElement.requestFullscreen ? () => document.documentElement.requestFullscreen()
+  : document.documentElement.webkitRequestFullscreen ? () => document.documentElement.webkitRequestFullscreen() : null;
+if (plein) $('#m-plein').onclick = () => { plein(); menu.classList.remove('ouvert'); };
+else $('#m-plein').remove();
+$('#m-redem').onclick = () => { menu.classList.remove('ouvert'); if (confirm('Redémarrer le jeu ? La partie non sauvegardée sera perdue.')) { deconnecter(); api('/api/redemarrer', true); } };
+$('#m-stop').onclick = () => { menu.classList.remove('ouvert'); if (confirm('Arrêter le jeu ? La partie non sauvegardée sera perdue.')) { deconnecter(); api('/api/arreter', true); } };
+
+boucle();
+</script>
+</body>
+</html>
