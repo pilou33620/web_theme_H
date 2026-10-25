@@ -9,6 +9,7 @@ Python standard uniquement (3.8+). Linux seulement (Raspberry Pi OS, Debian, Ubu
 import argparse
 import asyncio
 import base64
+import fcntl
 import hashlib
 import json
 import mimetypes
@@ -29,6 +30,7 @@ DOSSIER_JEU = RACINE / 'theme_hospital'
 DONNEES = RACINE / 'donnees'
 LOGS = RACINE / 'logs'
 GUID = b'258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+SON_FREQUENCE = 22050   # son du jeu : PCM 16 bits signé petit-boutiste, stéréo (format de SDL_mixer)
 TYPES = {'.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
          '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
          '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png'}
@@ -92,10 +94,11 @@ def ecrire_config_jeu(dossier_jeu, largeur, hauteur):
         'theme_hospital_install = [[%s]]\n'
         'width = %d\nheight = %d\nfullscreen = false\n'
         'play_intro = false\ncheck_for_updates = false\n'
+        'audio = true\naudio_frequency = %d\naudio_channels = 2\naudio_buffer_size = 1024\n'
         'prevent_edge_scrolling = true\n'  # au doigt, le curseur reste au bord : la carte défilerait sans fin
         'debug = true\n'  # F11 ouvre la fenêtre des triches (bouton « Triches » de la page)
         'savegames = [[%s]]\nscreenshots = [[%s]]\n'
-        % (dossier_jeu, largeur, hauteur, dossier / 'saves', dossier / 'captures'),
+        % (dossier_jeu, largeur, hauteur, SON_FREQUENCE, dossier / 'saves', dossier / 'captures'),
         encoding='utf-8')
     return chemin
 
@@ -196,10 +199,12 @@ class Jeu:
         self._verrou = asyncio.Lock()
         self._verrou_entree = asyncio.Lock()
         self._taches = set()
+        self.auditeurs = set()   # files des pages qui écoutent le son
+        self._son, self._pompe = None, None
 
     def statut(self):
         return {'etat': self.etat, 'message': self.message, 'largeur': self.largeur,
-                'hauteur': self.hauteur, 'novnc': trouver_novnc() is not None,
+                'hauteur': self.hauteur, 'son': SON_FREQUENCE, 'novnc': trouver_novnc() is not None,
                 'jeu_trouve': trouver_donnees(DOSSIER_JEU) is not None}
 
     def lancer_en_fond(self, coroutine):
@@ -254,9 +259,14 @@ class Jeu:
             raise Erreur('CorsixTH est introuvable : lance « sh raspberry/installer.sh --dependances ».')
         xvfb = shlex.split(os.environ.get('TH_XVFB', '')) or ['Xvfb']
         x11vnc = shlex.split(os.environ.get('TH_X11VNC', '')) or ['x11vnc']
-        env = dict(os.environ, DISPLAY=':' + self.affichage, SDL_AUDIODRIVER='dummy',
-                   SDL_VIDEODRIVER='x11', LIBGL_ALWAYS_SOFTWARE='1')
         config = ecrire_config_jeu(dossier, self.largeur, self.hauteur)
+        tube = DONNEES / 'son.fifo'
+        son = {'SDL_AUDIODRIVER': 'disk', 'SDL_DISKAUDIOFILE': str(tube), 'SDL_DISKAUDIODELAY': '0'} \
+            if self._ouvrir_son(tube) \
+            else {'SDL_AUDIODRIVER': 'dummy'}
+        # rendu 2D de SDL et affichage X11 direct : sans GPU, l'OpenGL logiciel coûtait ~5 fois plus de processeur
+        env = dict(os.environ, DISPLAY=':' + self.affichage, SDL_VIDEODRIVER='x11', SDL_RENDER_DRIVER='software',
+                   SDL_FRAMEBUFFER_ACCELERATION='0', LIBGL_ALWAYS_SOFTWARE='1', **son)
 
         nettoyer_affichage(self.affichage)
         p = await self._lancer('xvfb', xvfb + [':' + self.affichage, '-screen', '0',
@@ -286,6 +296,45 @@ class Jeu:
             raise Erreur('Le jeu s\'est arrêté au démarrage (voir logs/jeu.log).')
         self.etat = 'en_marche'
         self.lancer_en_fond(self._surveiller())
+
+    def _ouvrir_son(self, tube):
+        """Tube où le jeu écrit son son (sortie « disk » de SDL, sans pause : DISKAUDIODELAY=0)."""
+        try:
+            if tube.exists():
+                tube.unlink()
+            os.mkfifo(tube)
+            # O_RDWR : l'ouverture ne bloque pas, et pas de fin de fichier tant que le jeu n'écrit pas encore
+            self._son = os.open(tube, os.O_RDWR | os.O_NONBLOCK)
+        except OSError:
+            return False   # pas de son, le jeu tourne quand même
+        try:
+            fcntl.fcntl(self._son, getattr(fcntl, 'F_SETPIPE_SZ', 1031), 8192)   # petit tube : peu de retard
+        except OSError:
+            pass
+        self._pompe = asyncio.ensure_future(self._pomper_son())
+        return True
+
+    async def _pomper_son(self):
+        """Lit le tube au rythme du temps réel : tube plein, le fil audio du jeu attend, et le son sort
+        exactement à la bonne vitesse (la pause de SDL, elle, dérive de plusieurs %)."""
+        debit = SON_FREQUENCE * 4                          # octets par seconde : 2 canaux x 16 bits
+        t0, lus, reste = time.monotonic(), 0, b''
+        while True:
+            await asyncio.sleep(0.02)
+            du = int((time.monotonic() - t0) * debit) - lus
+            try:
+                d = os.read(self._son, du) if du > 0 else b''
+            except BlockingIOError:
+                d = b''
+            lus += len(d)
+            if du > debit // 5:                            # 0,2 s de retard : jeu en pause ou pas encore de son
+                t0, lus = time.monotonic(), 0
+            d = reste + d
+            coupe = len(d) - len(d) % 4                    # trames entières
+            d, reste = d[:coupe], d[coupe:]
+            for q in self.auditeurs:
+                if d and not q.full():
+                    q.put_nowait(d)                        # page trop lente : ce morceau est sauté
 
     async def _surveiller(self):
         """Si le jeu (ou son écran) s'arrête, on range tout : la page propose de redémarrer."""
@@ -322,6 +371,11 @@ class Jeu:
                     break
                 except asyncio.TimeoutError:
                     continue
+        if self._pompe:
+            self._pompe.cancel()
+        if self._son is not None:
+            os.close(self._son)
+        self._son, self._pompe = None, None
 
     async def arreter(self):
         async with self._verrou:
@@ -492,7 +546,7 @@ class Serveur:
 
     async def websocket(self, lecture, ecriture, chemin, entetes):
         cle = entetes.get('sec-websocket-key')
-        if chemin not in ('/vnc', '/input') or not cle:
+        if chemin not in ('/vnc', '/input', '/son') or not cle:
             ecriture.write(reponse(404, 'Introuvable'))
             return
         if self.jeu.etat != 'en_marche':
@@ -508,6 +562,8 @@ class Serveur:
         ws = WS(lecture, ecriture)
         if chemin == '/vnc':
             await self.relais_vnc(ws)
+        elif chemin == '/son':
+            await self.relais_son(ws)
         else:
             await self.relais_entree(ws)
 
@@ -545,6 +601,24 @@ class Serveur:
             for t in taches:
                 t.cancel()
             tw.close()
+
+    async def relais_son(self, ws):
+        q = asyncio.Queue(20)                             # au plus ~1 s de son en attente
+        self.jeu.auditeurs.add(q)
+        fin = asyncio.ensure_future(ws.recevoir())        # la page n'envoie rien : se termine à la fermeture
+        try:
+            while True:
+                morceau = asyncio.ensure_future(q.get())
+                await asyncio.wait([morceau, fin], return_when=asyncio.FIRST_COMPLETED)
+                if fin.done():
+                    morceau.cancel()
+                    return
+                await ws.envoyer(morceau.result())
+        except OSError:
+            pass
+        finally:
+            self.jeu.auditeurs.discard(q)
+            fin.cancel()
 
     async def relais_entree(self, ws):
         while True:

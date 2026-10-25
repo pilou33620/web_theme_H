@@ -33,6 +33,10 @@
     display: flex; gap: 8px; align-items: flex-end; }
   #actions .touche { position: static; }
   body.sans-touches #croix, body.sans-touches #actions .masquable { display: none; }
+  @media (orientation: landscape) {   /* en paysage, la rangée du bas cacherait la barre de boutons du jeu */
+    #actions { flex-direction: column-reverse; }
+    #menu { bottom: calc(12px + env(safe-area-inset-bottom)); right: calc(130px + env(safe-area-inset-right)); }
+  }
 
   #menu { position: fixed; z-index: 5; right: calc(12px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom));
     background: rgba(18,24,29,.96); border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 6px; display: none; min-width: 230px; }
@@ -82,8 +86,9 @@
 <script type="module">
 const $ = s => document.querySelector(s);
 const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-let RFB = null, rfb = null, entree = null;
+let RFB = null, rfb = null, entree = null, sonWs = null;
 let L = 1024, H = 768;                     // taille de l'écran du jeu
+let SON = 22050, audio = null, prochain = 0; // son : fréquence, contexte Web Audio, heure du prochain morceau
 let droit = false;                         // « Clic droit » armé pour le prochain appui
 let stylet = 0;                            // les doigts sont ignorés jusqu'à cet instant (paume)
 
@@ -104,6 +109,7 @@ function carte(titre, texte, bouton, action) {
 function deconnecter() {
   if (rfb) { try { rfb.disconnect(); } catch {} rfb = null; }
   if (entree) { try { entree.close(); } catch {} entree = null; }
+  if (sonWs) { try { sonWs.close(); } catch {} sonWs = null; }
 }
 
 async function connecter() {
@@ -119,7 +125,7 @@ async function connecter() {
   rfb.qualityLevel = 6; rfb.compressionLevel = 2;
   const courant = rfb;
   courant.addEventListener('disconnect', () => { if (rfb === courant) deconnecter(); });
-  ouvrirEntree();
+  ouvrirEntree(); ouvrirSon();
 }
 
 function ouvrirEntree() {
@@ -128,11 +134,39 @@ function ouvrirEntree() {
   ws.onclose = () => { if (entree === ws) { entree = null; if (rfb) setTimeout(ouvrirEntree, 1000); } };
 }
 
+function ouvrirSon() {
+  const ws = new WebSocket(`${proto}://${location.host}/son`);
+  ws.binaryType = 'arraybuffer';
+  sonWs = ws;
+  ws.onmessage = e => jouer(e.data);
+  ws.onclose = () => { if (sonWs === ws) { sonWs = null; if (rfb) setTimeout(ouvrirSon, 1000); } };
+}
+
+function jouer(octets) {                 // PCM 16 bits stéréo -> Web Audio, joué ~0,15 s en avance
+  if (!audio || audio.state !== 'running') return;               // pas encore débloqué par un toucher (Safari)
+  const pcm = new Int16Array(octets), n = pcm.length >> 1;
+  if (!n) return;
+  const t = audio.currentTime;
+  if (prochain > t + 0.5) return;                                // trop de retard accumulé : on saute ce morceau
+  if (prochain < t + 0.02) prochain = t + 0.15;                  // coupure : on se recale
+  const buf = audio.createBuffer(2, n, SON), g = buf.getChannelData(0), d = buf.getChannelData(1);
+  for (let i = 0; i < n; i++) { g[i] = pcm[2 * i] / 32768; d[i] = pcm[2 * i + 1] / 32768; }
+  const src = audio.createBufferSource();
+  const vitesse = Math.min(1.02, Math.max(0.98, 1 + (prochain - t - 0.15) * 0.1));   // rattrape la dérive du Pi sans coupure
+  src.buffer = buf; src.playbackRate.value = vitesse; src.connect(audio.destination); src.start(prochain);
+  prochain += buf.duration / vitesse;
+}
+function debloquerSon() {                // Safari n'autorise le son qu'après un geste de l'utilisateur
+  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.state !== 'running') audio.resume();
+}
+for (const ev of ['pointerup', 'touchend']) document.addEventListener(ev, debloquerSon, true);
+
 async function boucle() {
   const s = await api('/api/status');
   if (!s) carte('Serveur injoignable', 'La page réessaie toute seule…');
   else {
-    L = s.largeur; H = s.hauteur;
+    L = s.largeur; H = s.hauteur; SON = s.son || SON;
     if (s.etat === 'en_marche') { $('#carte').classList.remove('ouverte'); if (!rfb) connecter(); }
     else {
       deconnecter();

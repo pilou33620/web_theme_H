@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Faux jeu de test : une fenêtre plein écran qui journalise souris et clavier."""
-import sys, os, time
+import sys, os, time, threading
 from Xlib import X, display, XK
 
 cfg = [a for a in sys.argv[1:] if a.startswith('--config-file=')]
@@ -17,6 +17,16 @@ gc = fen.create_gc(foreground=s.black_pixel)
 fen.fill_rectangle(gc, 100, 100, 300, 200)
 d.flush()
 journal.write('pret %dx%d\n' % (s.width_in_pixels, s.height_in_pixels))
+
+
+def son():                               # comme la sortie « disk » de SDL sans pause : seul le tube plein freine
+    with open(os.environ['SDL_DISKAUDIOFILE'], 'wb', buffering=0) as f:
+        while True:
+            f.write(b'\x01\x00\x02\x00' * 1024)
+
+
+if os.environ.get('SDL_DISKAUDIOFILE'):
+    threading.Thread(target=son, daemon=True).start()
 while True:
     e = d.next_event()
     if e.type == X.MotionNotify:

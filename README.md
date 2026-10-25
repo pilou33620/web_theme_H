@@ -49,7 +49,8 @@ La résolution par défaut (4:3) remplit l'écran d'un iPad ; pour une tablette 
 
 ## À savoir
 
-- **Pas de son** : l'audio du jeu est coupé (le navigateur ne reçoit que l'image).
+- **Son** : bruitages, annonces et musique arrivent dans la page (environ 0,2 s de retard). Safari ne joue le son qu'après un premier toucher de l'écran. Volumes et musique : dans les options du jeu.
+- **Paysage conseillé** : en paysage, les boutons passent en colonne à droite pour laisser libre la barre du bas du jeu ; en portrait, le jeu est plus petit.
 - **Une seule partie à la fois** : tous les appareils connectés voient et commandent le même jeu.
 - **Pas de mot de passe** : garde-le sur le réseau de la maison, ne l'ouvre pas sur Internet.
 - Si le jeu plante ou si tu le quittes depuis son menu, la page propose « Démarrer ». Les journaux sont dans `logs/` (`xvfb.log`, `x11vnc.log`, `jeu.log`).
@@ -59,8 +60,9 @@ La résolution par défaut (4:3) remplit l'écran d'un iPad ; pour une tablette 
 
 ```
 server.py            serveur HTTP + WebSocket (Python standard) ; lance et surveille Xvfb, x11vnc, CorsixTH ;
-                     /vnc relaie l'écran vers noVNC ; /input transforme les gestes en souris/clavier VNC
-web/index.html       la page : affichage noVNC (lecture seule), gestes doigt/stylet/souris, touches à l'écran
+                     /vnc relaie l'écran vers noVNC ; /input transforme les gestes en souris/clavier VNC ;
+                     /son : le jeu écrit son son dans un tube (sortie « disk » de SDL), lu au rythme du temps réel
+web/index.html       la page : affichage noVNC (lecture seule), gestes doigt/stylet/souris, touches à l'écran, son (Web Audio)
 raspberry/           installer.sh : dépendances + service systemd
 theme_hospital/      le dossier du jeu, à remplir (non suivi par git)
 tests/               bancs d'essai : python3 tests/test_serveur.py
@@ -70,4 +72,4 @@ Les gestes ne passent pas par noVNC mais par un second client VNC minimal (`Entr
 
 ## Tests
 
-`python3 tests/test_serveur.py` : routes, relais VNC, injection de la souris et du clavier avec un faux serveur VNC ; et, si `Xvfb`, `x11vnc` et `python3-xlib` sont installés, toute la chaîne avec un faux jeu qui journalise les clics reçus.
+`python3 tests/test_serveur.py` : routes, relais VNC, relais du son, injection de la souris et du clavier avec un faux serveur VNC ; et, si `Xvfb`, `x11vnc` et `python3-xlib` sont installés, toute la chaîne avec un faux jeu qui journalise les clics reçus.

@@ -164,6 +164,22 @@ class TestServeur(unittest.IsolatedAsyncioTestCase):
         ecriture.write(('GET /vnc HTTP/1.1\r\nUpgrade: websocket\r\nSec-WebSocket-Key: %s\r\n\r\n' % cle_ws()).encode())
         self.assertIn(b'503', await asyncio.wait_for(lecture.read(), 5))
 
+    async def test_relais_son(self):
+        _, lecture, ecriture = await ouvrir_ws(self.port, '/son')
+        for _ in range(50):
+            if self.jeu.auditeurs:
+                break
+            await asyncio.sleep(0.02)
+        for q in self.jeu.auditeurs:
+            q.put_nowait(b'\x01\x00\x02\x00')
+        self.assertEqual(await asyncio.wait_for(lire_trame_serveur(lecture), 5), (2, b'\x01\x00\x02\x00'))
+        ecriture.close()
+        for _ in range(50):                                                 # page fermée : plus d'auditeur
+            if not self.jeu.auditeurs:
+                break
+            await asyncio.sleep(0.02)
+        self.assertFalse(self.jeu.auditeurs)
+
     async def test_entree_pointeur_et_touches(self):
         _, lecture, ecriture = await ouvrir_ws(self.port, '/input')
         for msg in ({'t': 'p', 'x': 640, 'y': 360, 'b': 1},
@@ -210,6 +226,17 @@ class TestChaineReelle(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0.5)
                 self.assertIn('pret 1280x720', journal.read_text())
                 self.assertIn('theme_hospital_install', (t / 'donnees' / 'corsixth' / 'config.txt').read_text())
+
+                # le son du jeu arrive aux auditeurs en trames entières, au rythme du temps réel
+                q = asyncio.Queue(1000)
+                jeu.auditeurs.add(q)
+                await asyncio.sleep(2)
+                jeu.auditeurs.discard(q)
+                morceaux = [q.get_nowait() for _ in range(q.qsize())]
+                self.assertTrue(morceaux and all(len(m) % 4 == 0 for m in morceaux))
+                self.assertEqual(morceaux[0][:4], b'\x01\x00\x02\x00')
+                debit = sum(map(len, morceaux)) / 2 / (server.SON_FREQUENCE * 4)
+                self.assertAlmostEqual(debit, 1, delta=0.05)
 
                 # un clic gauche, un clic droit, puis une touche
                 await jeu.saisir({'t': 'p', 'x': 200, 'y': 150, 'b': 0})
