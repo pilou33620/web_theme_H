@@ -92,6 +92,7 @@ def ecrire_config_jeu(dossier_jeu, largeur, hauteur):
         'theme_hospital_install = [[%s]]\n'
         'width = %d\nheight = %d\nfullscreen = false\n'
         'play_intro = false\ncheck_for_updates = false\n'
+        'prevent_edge_scrolling = true\n'  # au doigt, le curseur reste au bord : la carte défilerait sans fin
         'debug = true\n'  # F11 ouvre la fenêtre des triches (bouton « Triches » de la page)
         'savegames = [[%s]]\nscreenshots = [[%s]]\n'
         % (dossier_jeu, largeur, hauteur, dossier / 'saves', dossier / 'captures'),

@@ -29,9 +29,12 @@ Si le dossier du jeu manque, la page l'indique et propose « Réessayer » dès 
 | Taper (doigt) | Clic gauche |
 | Glisser (doigt) | Clic gauche maintenu et déplacé (poser une salle, tracer un couloir) |
 | Taper à deux doigts | Clic droit |
+| Glisser à deux doigts | Déplacer la carte |
 | Stylet : poser | Clic gauche ; la pointe survolante (iPad récent) déplace le curseur |
 | Bouton **Clic droit**, puis un appui | Clic droit en un seul appui (pour le stylet) |
 | Boutons ▲ ◀ ▶ ▼ (maintenus) | Défilement de la carte (flèches du clavier) |
+| Boutons **+** et **−** | Zoom avant et arrière |
+| Bouton **Sauver** | Sauvegarde rapide (Alt+Maj+S) ; la partie est aussi sauvegardée chaque mois |
 | Boutons **Pause**, **Échap** | Touches P et Échap |
 | Bouton **Triches** | Fenêtre des triches (F11) : « Argent » donne 10 000 $ par appui |
 | ☰ | Plein écran, masquer les touches, redémarrer ou arrêter le jeu |

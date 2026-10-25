@@ -56,7 +56,7 @@
 <div id="curseur"></div>
 
 <div id="croix">
-  <span></span><button class="touche" id="haut" aria-label="Haut">▲</button><span></span>
+  <button class="touche" id="zoommoins" aria-label="Zoom arrière">−</button><button class="touche" id="haut" aria-label="Haut">▲</button><button class="touche" id="zoomplus" aria-label="Zoom avant">+</button>
   <button class="touche" id="gauche" aria-label="Gauche">◀</button><span></span><button class="touche" id="droite" aria-label="Droite">▶</button>
   <span></span><button class="touche" id="bas" aria-label="Bas">▼</button><span></span>
 </div>
@@ -66,6 +66,7 @@
   <button class="touche large masquable" id="pause">Pause</button>
   <button class="touche large masquable" id="echap">Échap</button>
   <button class="touche large masquable" id="triches">Triches</button>
+  <button class="touche large masquable" id="sauver" aria-label="Sauvegarde rapide">Sauver</button>
   <button class="touche" id="menubtn" aria-label="Menu">☰</button>
 </div>
 
@@ -203,7 +204,7 @@ S.addEventListener('pointerdown', e => {
     curseur(e);
     if (doigts.size === 1) pointeur(p.x, p.y, 0);
     else {                                                        // deuxième doigt : possible clic droit
-      geste = { t0: performance.now(), bouge: false, p: [...doigts.values()][0].p };
+      if (!geste) geste = { t0: performance.now(), bouge: false, p: [...doigts.values()][0].p };   // un 3e doigt ne relance pas le geste
       for (const f of doigts.values()) { if (f.presse) pointeur(f.p.x, f.p.y, 0); f.ignore = true; }
     }
     return;
@@ -215,6 +216,7 @@ S.addEventListener('pointerdown', e => {
       if (f.presse && !f.ignore) envoyer({ t: 'p', x: f.p.x, y: f.p.y, b: 0 });   // direct : pointeur() l'écraserait
       f.ignore = true;
     }
+    if (geste && geste.pan) envoyer({ t: 'p', x: geste.m.x, y: geste.m.y, b: 0 });
     geste = null;
   }
   stylePose = e.pointerType === 'pen' ? ((e.buttons & 2) ? 4 : boutonArme()) : versVnc(e.buttons);
@@ -226,7 +228,15 @@ S.addEventListener('pointermove', e => {
   if (e.pointerType === 'touch') {
     const d = doigts.get(e.pointerId); if (!d) return;
     d.p = p; curseur(e);
-    if (geste) { if (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) > 14) geste.bouge = true; return; }
+    if (geste) {
+      if (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) > 14) geste.bouge = true;
+      if (geste.bouge && doigts.size >= 2) {                      // deux doigts qui glissent : bouton du milieu sur leur milieu
+        const ps = [...doigts.values()].map(f => f.p);
+        geste.m = { x: Math.round(ps.reduce((s, q) => s + q.x, 0) / ps.length), y: Math.round(ps.reduce((s, q) => s + q.y, 0) / ps.length) };
+        geste.pan = true; pointeur(geste.m.x, geste.m.y, 2);
+      }
+      return;
+    }
     if (d.ignore) return;
     if (!d.presse && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) > 10) {   // glisser : on appuie là où le doigt s'est posé
       d.presse = true; d.b = boutonArme();
@@ -245,6 +255,7 @@ function lever(e) {
     const d = doigts.get(e.pointerId); if (!d) return;
     doigts.delete(e.pointerId);
     if (geste) {
+      if (geste.pan) { pointeur(geste.m.x, geste.m.y, 0); geste.pan = false; }   // un doigt levé : fin du défilement
       if (!doigts.size) {
         if (!geste.bouge && performance.now() - geste.t0 < 500 && e.type === 'pointerup') clic(geste.p.x, geste.p.y, 4);
         geste = null;
@@ -282,7 +293,10 @@ function tapee(sel, ...keysyms) {       // touches appuyées dans l'ordre, relâ
   });
 }
 maintenue('#haut', 0xff52); maintenue('#bas', 0xff54); maintenue('#gauche', 0xff51); maintenue('#droite', 0xff53);
-tapee('#pause', 0x70); tapee('#echap', 0xff1b); tapee('#triches', 0xffc8);   // F11 : fenêtre des triches de CorsixTH (config debug = true)
+tapee('#pause', 0x70); tapee('#echap', 0xff1b);
+tapee('#triches', 0xffc8);                       // F11 : fenêtre des triches de CorsixTH (config debug = true)
+tapee('#sauver', 0xffe9, 0xffe1, 0x53);          // Alt+Maj+S : sauvegarde rapide
+tapee('#zoomplus', 0x3d); tapee('#zoommoins', 0x2d);   // touches = et - : zoom de CorsixTH
 $('#clicdroit').addEventListener('pointerdown', e => { e.preventDefault(); armer(!droit); });
 
 // ---------------------------------------------------------------- menu
