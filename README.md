@@ -32,6 +32,7 @@ Si le dossier du jeu manque, la page l'indique et propose « Réessayer » dès 
 | Glisser à deux doigts | Déplacer la carte |
 | Stylet : poser | Clic gauche ; la pointe survolante (iPad récent) déplace le curseur |
 | Bouton **Clic droit**, puis un appui | Clic droit en un seul appui (pour le stylet) |
+| Bouton **↻ Tourner** | Quart de tour de l'objet en cours de pose (touche Espace), un par appui |
 | Boutons ▲ ◀ ▶ ▼ (maintenus) | Défilement de la carte (flèches du clavier) |
 | Boutons **+** et **−** | Zoom avant et arrière |
 | Bouton **Sauver** | Sauvegarde rapide (Alt+Maj+S) ; la partie est aussi sauvegardée chaque mois |

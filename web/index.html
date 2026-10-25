@@ -66,6 +66,7 @@
 </div>
 
 <div id="actions">
+  <button class="touche large masquable" id="tourner" aria-label="Tourner l'objet">↻ Tourner</button>
   <button class="touche large masquable" id="clicdroit">Clic droit</button>
   <button class="touche large masquable" id="pause">Pause</button>
   <button class="touche large masquable" id="echap">Échap</button>
@@ -330,6 +331,7 @@ maintenue('#haut', 0xff52); maintenue('#bas', 0xff54); maintenue('#gauche', 0xff
 tapee('#pause', 0x70); tapee('#echap', 0xff1b);
 tapee('#triches', 0xffc8);                       // F11 : fenêtre des triches de CorsixTH (config debug = true)
 tapee('#sauver', 0xffe9, 0xffe1, 0x53);          // Alt+Maj+S : sauvegarde rapide
+tapee('#tourner', 0x20);                         // Espace : quart de tour de l'objet en cours de pose
 tapee('#zoomplus', 0x3d); tapee('#zoommoins', 0x2d);   // touches = et - : zoom de CorsixTH
 $('#clicdroit').addEventListener('pointerdown', e => { e.preventDefault(); armer(!droit); });
 
