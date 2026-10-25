@@ -5,8 +5,8 @@ Un petit serveur Python lance **Theme Hospital** (via [CorsixTH](https://corsixt
 ## Installation (Raspberry Pi 4, une seule fois)
 
 ```
-git clone https://github.com/pilou33620/web_theme_hospital.git
-cd web_theme_hospital
+git clone https://github.com/pilou33620/web_theme_H.git
+cd web_theme_H
 sh raspberry/installer.sh
 ```
 
