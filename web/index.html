@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Theme Hospital">
 <title>Theme Hospital</title>
 <style>
@@ -37,6 +37,7 @@
   #menu { position: fixed; z-index: 5; right: calc(12px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom));
     background: rgba(18,24,29,.96); border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 6px; display: none; min-width: 230px; }
   #menu.ouvert { display: block; }
+  #menu button, #carte button { touch-action: manipulation; }   /* pas de zoom au double-tape (Safari ignore user-scalable=no) */
   #menu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--texte);
     font: inherit; padding: 12px 14px; border-radius: 8px; }
   #menu button:active { background: rgba(255,255,255,.12); }
@@ -64,6 +65,7 @@
   <button class="touche large masquable" id="clicdroit">Clic droit</button>
   <button class="touche large masquable" id="pause">Pause</button>
   <button class="touche large masquable" id="echap">Échap</button>
+  <button class="touche large masquable" id="triches">Triches</button>
   <button class="touche" id="menubtn" aria-label="Menu">☰</button>
 </div>
 
@@ -80,7 +82,7 @@
 const $ = s => document.querySelector(s);
 const proto = location.protocol === 'https:' ? 'wss' : 'ws';
 let RFB = null, rfb = null, entree = null;
-let L = 1280, H = 720;                     // taille de l'écran du jeu
+let L = 1024, H = 768;                     // taille de l'écran du jeu
 let droit = false;                         // « Clic droit » armé pour le prochain appui
 let stylet = 0;                            // les doigts sont ignorés jusqu'à cet instant (paume)
 
@@ -207,7 +209,14 @@ S.addEventListener('pointerdown', e => {
     return;
   }
   S.setPointerCapture(e.pointerId);
-  if (e.pointerType === 'pen') { stylet = performance.now() + 1500; curseur(e); }
+  if (e.pointerType === 'pen') {
+    stylet = performance.now() + 1500; curseur(e);
+    for (const f of doigts.values()) {                            // paume posée avant le stylet : on la relâche et l'ignore
+      if (f.presse && !f.ignore) envoyer({ t: 'p', x: f.p.x, y: f.p.y, b: 0 });   // direct : pointeur() l'écraserait
+      f.ignore = true;
+    }
+    geste = null;
+  }
   stylePose = e.pointerType === 'pen' ? ((e.buttons & 2) ? 4 : boutonArme()) : versVnc(e.buttons);
   pointeur(p.x, p.y, stylePose);
 });
@@ -244,7 +253,7 @@ function lever(e) {
     }
     if (d.ignore) return;
     if (d.presse) pointeur(d.p.x, d.p.y, 0);
-    else clic(d.x0, d.y0, boutonArme());                          // simple tape
+    else if (e.type === 'pointerup') clic(d.x0, d.y0, boutonArme()); // simple tape (pas un contact annulé par iPadOS)
     return;
   }
   if (p) pointeur(p.x, p.y, 0);
@@ -262,16 +271,18 @@ function maintenue(sel, keysym) {        // appuyée tant que le doigt reste pos
   const fin = () => { if (b.classList.contains('on')) { b.classList.remove('on'); envoyer({ t: 'k', k: keysym, d: 0 }); } };
   b.addEventListener('pointerup', fin); b.addEventListener('pointercancel', fin);
 }
-function tapee(sel, keysym) {
+function tapee(sel, ...keysyms) {       // touches appuyées dans l'ordre, relâchées à l'envers (Maj+C)
   const b = $(sel);
   b.addEventListener('pointerdown', async e => {
     e.preventDefault(); b.classList.add('on');
-    envoyer({ t: 'k', k: keysym, d: 1 }); await attendre(60); envoyer({ t: 'k', k: keysym, d: 0 });
+    for (const k of keysyms) envoyer({ t: 'k', k, d: 1 });
+    await attendre(60);
+    for (const k of [...keysyms].reverse()) envoyer({ t: 'k', k, d: 0 });
     b.classList.remove('on');
   });
 }
 maintenue('#haut', 0xff52); maintenue('#bas', 0xff54); maintenue('#gauche', 0xff51); maintenue('#droite', 0xff53);
-tapee('#pause', 0x70); tapee('#echap', 0xff1b);
+tapee('#pause', 0x70); tapee('#echap', 0xff1b); tapee('#triches', 0xffc8);   // F11 : fenêtre des triches de CorsixTH (config debug = true)
 $('#clicdroit').addEventListener('pointerdown', e => { e.preventDefault(); armer(!droit); });
 
 // ---------------------------------------------------------------- menu

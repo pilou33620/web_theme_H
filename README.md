@@ -12,6 +12,8 @@ sh raspberry/installer.sh
 
 Le script installe `xvfb`, `x11vnc`, `novnc`, CorsixTH, puis crée le service `web_theme_hospital` : le jeu démarre à chaque allumage du Raspberry. (`sh raspberry/installer.sh --dependances` installe seulement les dépendances.)
 
+Avec [web_launcher](https://github.com/pilou33620/web_launcher) : installe seulement les dépendances (`--dependances`), sans le service ; le jeu se démarre et s'arrête depuis sa carte « Theme Hospital ».
+
 ## Utilisation
 
 1. Copie ton dossier de Theme Hospital (celui qui contient `Data`) dans **`theme_hospital/`**. Tu peux l'acheter sur GOG ; la démo gratuite marche aussi.
@@ -31,15 +33,16 @@ Si le dossier du jeu manque, la page l'indique et propose « Réessayer » dès 
 | Bouton **Clic droit**, puis un appui | Clic droit en un seul appui (pour le stylet) |
 | Boutons ▲ ◀ ▶ ▼ (maintenus) | Défilement de la carte (flèches du clavier) |
 | Boutons **Pause**, **Échap** | Touches P et Échap |
+| Bouton **Triches** | Fenêtre des triches (F11) : « Argent » donne 10 000 $ par appui |
 | ☰ | Plein écran, masquer les touches, redémarrer ou arrêter le jeu |
 
 Pendant l'usage du stylet, la paume posée sur l'écran est ignorée. Un anneau blanc montre où se trouve le curseur.
 
 ## Options du serveur
 
-`--port 8791` · `--local` (cette machine seulement) · `--resolution 1280x720` · `--sans-jeu` (ne pas lancer le jeu au démarrage) · `--affichage 99` · `--vnc-port 5999`
+`--port 8791` · `--local` (cette machine seulement) · `--resolution 1024x768` · `--sans-jeu` (ne pas lancer le jeu au démarrage) · `--affichage 99` · `--vnc-port 5999`
 
-Sur un Pi 4, `--resolution 1024x576` allège le flux si l'image saccade.
+La résolution par défaut (4:3) remplit l'écran d'un iPad ; pour une tablette 16:9, prends `--resolution 1280x720`. Sur un Pi 4, `--resolution 800x600` allège le flux si l'image saccade.
 
 ## À savoir
 

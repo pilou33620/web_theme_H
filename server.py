@@ -76,7 +76,7 @@ def commande_jeu():
     if env:
         return shlex.split(env)
     for nom in ('corsix-th', 'CorsixTH', 'corsixth'):
-        chemin = shutil.which(nom)
+        chemin = shutil.which(nom, path=os.environ.get('PATH', '') + os.pathsep + '/usr/games')  # Debian : /usr/games hors du PATH
         if chemin:
             return [chemin]
     return None
@@ -92,6 +92,7 @@ def ecrire_config_jeu(dossier_jeu, largeur, hauteur):
         'theme_hospital_install = [[%s]]\n'
         'width = %d\nheight = %d\nfullscreen = false\n'
         'play_intro = false\ncheck_for_updates = false\n'
+        'debug = true\n'  # F11 ouvre la fenêtre des triches (bouton « Triches » de la page)
         'savegames = [[%s]]\nscreenshots = [[%s]]\n'
         % (dossier_jeu, largeur, hauteur, dossier / 'saves', dossier / 'captures'),
         encoding='utf-8')
@@ -184,7 +185,7 @@ class Entree:
 # ----------------------------------------------------------------- le jeu et son écran virtuel
 
 class Jeu:
-    def __init__(self, largeur=1280, hauteur=720, affichage=99, port_vnc=5999):
+    def __init__(self, largeur=1024, hauteur=768, affichage=99, port_vnc=5999):
         self.largeur, self.hauteur = largeur, hauteur
         self.affichage, self.port_vnc = str(affichage), port_vnc
         self.etat = 'arrete'   # arrete | demarrage | en_marche | erreur
@@ -612,7 +613,7 @@ def main():
     p.add_argument('--port', type=int, default=8791)
     p.add_argument('--lan', action='store_true', help='ouvert au réseau local (par défaut)')
     p.add_argument('--local', action='store_true', help='cette machine seulement')
-    p.add_argument('--resolution', default='1280x720', help='taille de l\'écran du jeu (défaut 1280x720)')
+    p.add_argument('--resolution', default='1024x768', help='taille de l\'écran du jeu (défaut 1024x768, format 4:3 de l\'iPad)')
     p.add_argument('--affichage', type=int, default=99, help='numéro de l\'écran virtuel X (défaut 99)')
     p.add_argument('--vnc-port', type=int, default=5999, help='port VNC interne (défaut 5999)')
     p.add_argument('--sans-jeu', action='store_true', help='ne pas lancer le jeu au démarrage')
