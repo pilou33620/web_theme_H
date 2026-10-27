@@ -114,6 +114,22 @@ class TestFichiers(unittest.TestCase):
         self.assertIsNone(server.fichier_sous(None, 'index.html'))
 
 
+class TestCommandeJeu(unittest.TestCase):
+    def test_version_compilee_prioritaire(self):
+        with tempfile.TemporaryDirectory() as t:
+            ancien, server.RACINE = server.RACINE, Path(t)
+            os.environ.pop('TH_JEU', None)
+            try:
+                (Path(t) / 'vendor' / 'corsixth' / 'bin').mkdir(parents=True)
+                (Path(t) / 'vendor' / 'corsixth' / 'bin' / 'CorsixTH').write_text('x')
+                self.assertEqual(server.commande_jeu(), [str(Path(t) / 'vendor' / 'corsixth' / 'bin' / 'CorsixTH')])
+                os.environ['TH_JEU'] = 'autre jeu'                                  # TH_JEU reste le plus fort
+                self.assertEqual(server.commande_jeu(), ['autre', 'jeu'])
+            finally:
+                server.RACINE = ancien
+                os.environ.pop('TH_JEU', None)
+
+
 class TestConfigJeu(unittest.TestCase):
     def test_reglages_du_jeu_conserves(self):
         with tempfile.TemporaryDirectory() as t:

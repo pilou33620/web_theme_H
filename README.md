@@ -14,6 +14,17 @@ Le script installe `xvfb`, `x11vnc`, `novnc`, CorsixTH, puis crée le service `w
 
 Avec [web_launcher](https://github.com/pilou33620/web_launcher) : installe seulement les dépendances (`--dependances`), sans le service ; le jeu se démarre et s'arrête depuis sa carte « Theme Hospital ».
 
+## Mettre à jour CorsixTH
+
+Debian garde une version ancienne de CorsixTH (0.68.0 alors que la 0.70.1 existe). Pour avoir la dernière version stable, directement depuis le git du projet :
+
+```
+sh raspberry/corsixth.sh --verifier   # dit s'il y a plus récent, n'installe rien
+sh raspberry/corsixth.sh              # installe ou met à jour (git + compilation, ~30 min sur un Pi 4)
+```
+
+La première fois, le script demande le mot de passe `sudo` pour installer les paquets de compilation. Ensuite tout se passe dans `vendor/` (hors git) : l'ancienne version reste utilisable jusqu'à la fin de la compilation. Redémarre ensuite le jeu. `--retirer` revient à la version de Debian.
+
 ## Utilisation
 
 1. Copie ton dossier de Theme Hospital (celui qui contient `Data`) dans **`theme_hospital/`**. Tu peux l'acheter sur GOG ; la démo gratuite marche aussi.
@@ -64,7 +75,7 @@ server.py            serveur HTTP + WebSocket (Python standard) ; lance et surve
                      /vnc relaie l'écran vers noVNC ; /input transforme les gestes en souris/clavier VNC ;
                      /son : le jeu écrit son son dans un tube (sortie « disk » de SDL), lu au rythme du temps réel
 web/index.html       la page : affichage noVNC (lecture seule), gestes doigt/stylet/souris, touches à l'écran, son (Web Audio)
-raspberry/           installer.sh : dépendances + service systemd
+raspberry/           installer.sh : dépendances + service systemd ; corsixth.sh : CorsixTH à jour depuis git
 theme_hospital/      le dossier du jeu, à remplir (non suivi par git)
 tests/               bancs d'essai : python3 tests/test_serveur.py
 ```

@@ -77,6 +77,9 @@ def commande_jeu():
     env = os.environ.get('TH_JEU')
     if env:
         return shlex.split(env)
+    compile_ = RACINE / 'vendor' / 'corsixth' / 'bin' / 'CorsixTH'   # installé par raspberry/corsixth.sh
+    if compile_.is_file():
+        return [str(compile_)]
     for nom in ('corsix-th', 'CorsixTH', 'corsixth'):
         chemin = shutil.which(nom, path=os.environ.get('PATH', '') + os.pathsep + '/usr/games')  # Debian : /usr/games hors du PATH
         if chemin:
