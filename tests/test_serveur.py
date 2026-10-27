@@ -114,6 +114,26 @@ class TestFichiers(unittest.TestCase):
         self.assertIsNone(server.fichier_sous(None, 'index.html'))
 
 
+class TestConfigJeu(unittest.TestCase):
+    def test_reglages_du_jeu_conserves(self):
+        with tempfile.TemporaryDirectory() as t:
+            ancien, server.DONNEES = server.DONNEES, Path(t)
+            try:
+                chemin = server.ecrire_config_jeu(Path('/jeu'), 1024, 768)             # premier démarrage
+                self.assertIn('width = 1024', chemin.read_text())
+                chemin.write_text(chemin.read_text().replace('width = 1024', 'width = 640') +
+                                  'language = [[French]]\nmusic_volume = 0.9\n-- debug = false\n')   # réglé dans le jeu
+                server.ecrire_config_jeu(Path('/jeu'), 1024, 768)                      # redémarrage
+                texte = chemin.read_text()
+                self.assertIn('language = [[French]]', texte)
+                self.assertIn('music_volume = 0.9', texte)
+                self.assertIn('width = 1024', texte)                                   # imposé : remis
+                self.assertNotIn('width = 640', texte)
+                self.assertEqual(texte.count('debug = true'), 1)
+            finally:
+                server.DONNEES = ancien
+
+
 class TestServeur(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.faux = FauxVnc()

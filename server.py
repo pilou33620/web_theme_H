@@ -85,21 +85,33 @@ def commande_jeu():
 
 
 def ecrire_config_jeu(dossier_jeu, largeur, hauteur):
-    """Écrit le config.txt de CorsixTH (le jeu n'est jamais configuré à la main)."""
+    """Met à jour le config.txt de CorsixTH : impose ce dont le serveur a besoin, garde le reste
+    (langue, volumes... réglés dans le jeu, qui réécrit lui-même ce fichier)."""
     dossier = DONNEES / 'corsixth'
     (dossier / 'saves').mkdir(parents=True, exist_ok=True)
     (dossier / 'captures').mkdir(parents=True, exist_ok=True)
     chemin = dossier / 'config.txt'
-    chemin.write_text(
-        'theme_hospital_install = [[%s]]\n'
-        'width = %d\nheight = %d\nfullscreen = false\n'
-        'play_intro = false\ncheck_for_updates = false\n'
-        'audio = true\naudio_frequency = %d\naudio_channels = 2\naudio_buffer_size = 1024\n'
-        'prevent_edge_scrolling = true\n'  # au doigt, le curseur reste au bord : la carte défilerait sans fin
-        'debug = true\n'  # F11 ouvre la fenêtre des triches (bouton « Triches » de la page)
-        'savegames = [[%s]]\nscreenshots = [[%s]]\n'
-        % (dossier_jeu, largeur, hauteur, SON_FREQUENCE, dossier / 'saves', dossier / 'captures'),
-        encoding='utf-8')
+    imposes = {
+        'theme_hospital_install': '[[%s]]' % dossier_jeu,
+        'width': str(largeur), 'height': str(hauteur), 'fullscreen': 'false',
+        'play_intro': 'false', 'check_for_updates': 'false',
+        'audio': 'true', 'audio_frequency': str(SON_FREQUENCE), 'audio_channels': '2', 'audio_buffer_size': '1024',
+        'prevent_edge_scrolling': 'true',  # au doigt, le curseur reste au bord : la carte défilerait sans fin
+        'debug': 'true',  # F11 ouvre la fenêtre des triches (bouton « Triches » de la page)
+        'savegames': '[[%s]]' % (dossier / 'saves'), 'screenshots': '[[%s]]' % (dossier / 'captures'),
+    }
+    try:
+        lignes = chemin.read_text(encoding='utf-8').splitlines()
+    except (OSError, UnicodeDecodeError):
+        lignes = []   # absent ou illisible : on repart d'un fichier neuf
+    vus = set()
+    for i, ligne in enumerate(lignes):
+        cle = ligne.split('=', 1)[0].strip()
+        if '=' in ligne and cle in imposes:
+            lignes[i] = '%s = %s' % (cle, imposes[cle])
+            vus.add(cle)
+    lignes += ['%s = %s' % (c, v) for c, v in imposes.items() if c not in vus]
+    chemin.write_text('\n'.join(lignes) + '\n', encoding='utf-8')
     return chemin
 
 
