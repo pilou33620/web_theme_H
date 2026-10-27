@@ -29,17 +29,19 @@
   #croix { position: fixed; z-index: 4; left: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom));
     display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 4px; }
   #croix .touche { position: static; }
+  #vitesses { position: fixed; z-index: 4; left: calc(12px + env(safe-area-inset-left)); bottom: calc(196px + env(safe-area-inset-bottom)); display: flex; gap: 4px; }
+  #vitesses .touche { position: static; width: 40px; height: 40px; border-radius: 10px; }
   #actions { position: fixed; z-index: 4; right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom));
     display: flex; gap: 8px; align-items: flex-end; }
   #actions .touche { position: static; }
-  body.sans-touches #croix, body.sans-touches #actions .masquable { display: none; }
+  body.sans-touches #croix, body.sans-touches #vitesses, body.sans-touches #actions .masquable { display: none; }
   @media (orientation: landscape) {   /* en paysage, la rangée du bas cacherait la barre de boutons du jeu */
     #actions { flex-direction: column-reverse; }
     #menu { bottom: calc(12px + env(safe-area-inset-bottom)); right: calc(130px + env(safe-area-inset-right)); }
   }
 
   #menu { position: fixed; z-index: 5; right: calc(12px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom));
-    background: rgba(18,24,29,.96); border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 6px; display: none; min-width: 230px; }
+    background: rgba(18,24,29,.96); border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 6px; display: none; min-width: 230px; max-height: calc(100vh - 100px); overflow-y: auto; }
   #menu.ouvert { display: block; }
   #menu button, #carte button { touch-action: manipulation; }   /* pas de zoom au double-tape (Safari ignore user-scalable=no) */
   #menu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--texte);
@@ -65,10 +67,15 @@
   <span></span><button class="touche" id="bas" aria-label="Bas">▼</button><span></span>
 </div>
 
+<div id="vitesses">
+  <button class="touche" id="v1" aria-label="Vitesse la plus lente">1</button><button class="touche" id="v2" aria-label="Vitesse lente">2</button><button class="touche" id="v3" aria-label="Vitesse normale">3</button><button class="touche" id="v4" aria-label="Vitesse maximale">4</button><button class="touche" id="v5" aria-label="Vitesse maximale +">5</button>
+</div>
+
 <div id="actions">
   <button class="touche large masquable" id="tourner" aria-label="Tourner l'objet">↻ Tourner</button>
   <button class="touche large masquable" id="clicdroit">Clic droit</button>
   <button class="touche large masquable" id="pause">Pause</button>
+  <button class="touche large masquable" id="entree">Entrée</button>
   <button class="touche large masquable" id="echap">Échap</button>
   <button class="touche large masquable" id="triches">Triches</button>
   <button class="touche large masquable" id="sauver" aria-label="Sauvegarde rapide">Sauver</button>
@@ -76,6 +83,12 @@
 </div>
 
 <div id="menu">
+  <button id="f-charger">Charger une partie</button>
+  <button id="f-sauver">Sauvegarder la partie</button>
+  <button id="f-rapide-s">Sauvegarde rapide</button>
+  <button id="f-rapide-c">Chargement rapide</button>
+  <button id="f-niveau-r">Recommencer le niveau</button>
+  <button id="f-niveau-q">Quitter le niveau</button>
   <button id="m-plein">Plein écran</button>
   <button id="m-touches">Masquer les touches</button>
   <button id="m-redem">Redémarrer le jeu</button>
@@ -333,11 +346,18 @@ tapee('#triches', 0xffc8);                       // F11 : fenêtre des triches d
 tapee('#sauver', 0xffe9, 0xffe1, 0x53);          // Alt+Maj+S : sauvegarde rapide
 tapee('#tourner', 0x20);                         // Espace : quart de tour de l'objet en cours de pose
 tapee('#zoomplus', 0x3d); tapee('#zoommoins', 0x2d);   // touches = et - : zoom de CorsixTH
+for (let i = 1; i <= 5; i++) tapee('#v' + i, 0x30 + i);   // vitesses de jeu : touches 1 à 5
+tapee('#entree', 0xff0d);                        // Entrée : valider dans les menus (démarrer la partie)
+// menu Fichier : Maj+L, Maj+S, Alt+Maj+S, Alt+Maj+L, Maj+R, Maj+Q
+tapee('#f-charger', 0xffe1, 0x4c); tapee('#f-sauver', 0xffe1, 0x53);
+tapee('#f-rapide-s', 0xffe9, 0xffe1, 0x53); tapee('#f-rapide-c', 0xffe9, 0xffe1, 0x4c);
+tapee('#f-niveau-r', 0xffe1, 0x52); tapee('#f-niveau-q', 0xffe1, 0x51);
 $('#clicdroit').addEventListener('pointerdown', e => { e.preventDefault(); armer(!droit); });
 
 // ---------------------------------------------------------------- menu
 
 const menu = $('#menu');
+for (const b of menu.querySelectorAll('[id^=f-]')) b.addEventListener('pointerdown', () => menu.classList.remove('ouvert'));
 $('#menubtn').addEventListener('pointerdown', e => { e.preventDefault(); menu.classList.toggle('ouvert'); });
 S.addEventListener('pointerdown', () => menu.classList.remove('ouvert'), true);
 $('#m-touches').onclick = () => {
