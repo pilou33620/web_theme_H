@@ -44,7 +44,7 @@ if [ -n "$manque" ]; then
 fi
 [ "$1" = "--dependances" ] && { echo "Paquets installés. Lance : sh raspberry/corsixth.sh"; exit 0; }
 
-if [ "$installee" = "$derniere" ] && [ -x "$PREFIX/bin/CorsixTH" ]; then
+if [ "$installee" = "$derniere" ] && [ -x "$PREFIX/bin/corsix-th" ]; then
   echo "CorsixTH $derniere est déjà installé."; exit 0
 fi
 
@@ -59,12 +59,14 @@ else
 fi
 
 echo "==> Compilation (long : 2 processeurs seulement, pour laisser le Pi respirer)"
-# la vérification de version du jeu est coupée (check_for_updates = false) : pas besoin de libcurl
-cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" -DWITH_UPDATE_CHECK=OFF
+# pas de libcurl (vérification de version du jeu coupée : check_for_updates = false) ni de RtMidi
+# (instrument MIDI branché : la musique passe par la banque de sons logicielle)
+cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DWITH_UPDATE_CHECK=OFF -DWITH_MIDI_DEVICE=OFF
 nice -n 10 cmake --build "$BUILD" -j 2
 
 echo "==> Installation dans $PREFIX"
-rm -f "$PREFIX/bin/CorsixTH"   # supprimer un programme en cours d'exécution est permis, l'écraser non
+rm -f "$PREFIX/bin/corsix-th"   # supprimer un programme en cours d'exécution est permis, l'écraser non
 cmake --install "$BUILD"
 echo "$derniere" > "$PREFIX/VERSION"
 echo

@@ -77,7 +77,7 @@ def commande_jeu():
     env = os.environ.get('TH_JEU')
     if env:
         return shlex.split(env)
-    compile_ = RACINE / 'vendor' / 'corsixth' / 'bin' / 'CorsixTH'   # installé par raspberry/corsixth.sh
+    compile_ = RACINE / 'vendor' / 'corsixth' / 'bin' / 'corsix-th'   # installé par raspberry/corsixth.sh
     if compile_.is_file():
         return [str(compile_)]
     for nom in ('corsix-th', 'CorsixTH', 'corsixth'):

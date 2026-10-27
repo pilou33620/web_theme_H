@@ -121,8 +121,8 @@ class TestCommandeJeu(unittest.TestCase):
             os.environ.pop('TH_JEU', None)
             try:
                 (Path(t) / 'vendor' / 'corsixth' / 'bin').mkdir(parents=True)
-                (Path(t) / 'vendor' / 'corsixth' / 'bin' / 'CorsixTH').write_text('x')
-                self.assertEqual(server.commande_jeu(), [str(Path(t) / 'vendor' / 'corsixth' / 'bin' / 'CorsixTH')])
+                (Path(t) / 'vendor' / 'corsixth' / 'bin' / 'corsix-th').write_text('x')
+                self.assertEqual(server.commande_jeu(), [str(Path(t) / 'vendor' / 'corsixth' / 'bin' / 'corsix-th')])
                 os.environ['TH_JEU'] = 'autre jeu'                                  # TH_JEU reste le plus fort
                 self.assertEqual(server.commande_jeu(), ['autre', 'jeu'])
             finally:
