@@ -9,8 +9,11 @@ Python standard uniquement (3.8+). Linux seulement (Raspberry Pi OS, Debian, Ubu
 import argparse
 import asyncio
 import base64
+import email.message
 import fcntl
 import hashlib
+import http
+import io
 import json
 import mimetypes
 import os
@@ -18,11 +21,15 @@ import shlex
 import shutil
 import signal
 import socket
+import ssl
 import struct
 import sys
 import time
+import types
 from pathlib import Path
 from urllib.parse import unquote
+
+import appairage
 
 RACINE = Path(__file__).resolve().parent
 WEB = RACINE / 'web'
@@ -509,9 +516,43 @@ def fichier_sous(base, chemin):
     return cible if cible.is_file() else None
 
 
+class Requete:
+    """Ce que appairage.Garde attend d'un gestionnaire http.server, sur une connexion asyncio."""
+
+    def __init__(self, methode, chemin, entetes, ecriture, corps, tls):
+        self.command, self.path = methode, chemin
+        self.headers = email.message.Message()
+        for k, v in entetes.items():
+            self.headers[k] = v
+        self.client_address = ecriture.get_extra_info('peername') or ('', 0)
+        self.connection = ecriture.get_extra_info('ssl_object')
+        self.server = types.SimpleNamespace(tls_web_tools=tls)
+        self.rfile, self.wfile = io.BytesIO(corps), io.BytesIO()
+
+    def send_response(self, code):
+        self.wfile.write(b'HTTP/1.1 %d %s\r\n' % (code, http.HTTPStatus(code).phrase.encode()))
+
+    def send_header(self, cle, valeur):
+        self.wfile.write(('%s: %s\r\n' % (cle, valeur)).encode('latin1', 'replace'))
+
+    def end_headers(self):
+        self.wfile.write(b'Connection: close\r\n\r\n')
+
+
 class Serveur:
-    def __init__(self, jeu):
+    def __init__(self, jeu, garde=None):
         self.jeu = jeu
+        self.garde = garde
+
+    async def refus(self, lecture, ecriture, methode, brut, chemin, entetes):
+        """La réponse de la garde (Host, Internet, HTTPS, jeton), ou None : la requête suit son cours."""
+        corps = b''
+        if methode == 'POST' and chemin == appairage.ROUTE:
+            longueur = entetes.get('content-length', '0')
+            if longueur.isdigit() and int(longueur) <= 4096:
+                corps = await asyncio.wait_for(lecture.readexactly(int(longueur)), 10)
+        requete = Requete(methode, brut, entetes, ecriture, corps, self.garde.tls)
+        return None if self.garde.filtrer(requete) else requete.wfile.getvalue()
 
     async def client(self, lecture, ecriture):
         try:
@@ -519,7 +560,8 @@ class Serveur:
             morceaux = ligne.decode('latin1').split(' ')
             if len(morceaux) < 2:
                 return
-            methode, chemin = morceaux[0], morceaux[1].split('?', 1)[0]
+            methode, brut = morceaux[0], morceaux[1]
+            chemin = brut.split('?', 1)[0]
             entetes = {}
             while True:
                 l = await asyncio.wait_for(lecture.readline(), 10)
@@ -527,12 +569,18 @@ class Serveur:
                     break
                 k, _, v = l.decode('latin1').partition(':')
                 entetes[k.strip().lower()] = v.strip()
+            if self.garde:
+                refus = await self.refus(lecture, ecriture, methode, brut, chemin, entetes)
+                if refus is not None:
+                    ecriture.write(refus)
+                    await ecriture.drain()
+                    return
             if entetes.get('upgrade', '').lower() == 'websocket':
                 await self.websocket(lecture, ecriture, chemin, entetes)
             else:
                 ecriture.write(await self.http(methode, chemin))
                 await ecriture.drain()
-        except (asyncio.TimeoutError, OSError, UnicodeDecodeError):
+        except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError, UnicodeDecodeError):
             pass
         finally:
             ecriture.close()
@@ -650,7 +698,50 @@ class Serveur:
 
 # ----------------------------------------------------------------- démarrage
 
-def adresses(port):
+async def ouvrir_ecoute(client, hote, port, ctx):
+    """Sert `client` sur ce port. Avec un contexte TLS, HTTP et HTTPS sur le même port, comme
+    appairage.brancher_tls : le premier octet est lu sans être consommé (0x16 = poignée de main)."""
+    if ctx is None:
+        return await asyncio.start_server(client, hote, port)
+    boucle = asyncio.get_running_loop()
+    ecoute = socket.create_server((hote, port))
+    ecoute.setblocking(False)
+    en_cours = set()
+
+    async def servir(conn):
+        pret = boucle.create_future()
+
+        def lisible():
+            boucle.remove_reader(conn)
+            if not pret.done():
+                pret.set_result(None)
+        try:
+            boucle.add_reader(conn, lisible)
+            await asyncio.wait_for(pret, 15)              # un client muet ne garde pas la connexion
+            tls = conn.recv(1, socket.MSG_PEEK) == b'\x16'
+            protocole = asyncio.StreamReaderProtocol(asyncio.StreamReader(), client)
+            await boucle.connect_accepted_socket(lambda: protocole, conn, ssl=ctx if tls else None)
+        except (asyncio.TimeoutError, OSError, ssl.SSLError):     # certificat refusé par le client, coupure…
+            boucle.remove_reader(conn)
+            conn.close()
+
+    async def accepter():
+        while True:
+            try:
+                conn, _ = await boucle.sock_accept(ecoute)
+            except OSError:
+                await asyncio.sleep(0.1)
+                continue
+            conn.setblocking(False)
+            tache = asyncio.ensure_future(servir(conn))
+            en_cours.add(tache)
+            tache.add_done_callback(en_cours.discard)
+
+    tache = asyncio.ensure_future(accepter())
+    return types.SimpleNamespace(close=lambda: (tache.cancel(), ecoute.close()))
+
+
+def adresses(port, schema='http'):
     ips = []
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -658,8 +749,8 @@ def adresses(port):
             ips.append(s.getsockname()[0])
     except OSError:
         pass
-    urls = ['http://%s:%d' % (ip, port) for ip in ips]
-    urls.append('http://%s.local:%d' % (socket.gethostname(), port))
+    urls = ['%s://%s:%d' % (schema, ip, port) for ip in ips]
+    urls.append('%s://%s.local:%d' % (schema, socket.gethostname(), port))
     return urls
 
 
@@ -677,20 +768,25 @@ async def principal(a):
     largeur, hauteur = (int(v) for v in a.resolution.lower().split('x'))
     jeu = Jeu(largeur, hauteur, a.affichage, a.vnc_port)
     hote = '127.0.0.1' if a.local else '0.0.0.0'
+    garde = appairage.Garde('Theme Hospital', actif=not a.local)
+    if garde.actif:
+        garde.tls, garde.sans_tls = appairage.contexte_tls()
+        garde.port = a.port
     try:
-        serveur = await asyncio.start_server(Serveur(jeu).client, hote, a.port)
+        serveur = await ouvrir_ecoute(Serveur(jeu, garde).client, hote, a.port, garde.tls)
     except OSError as e:
         sys.exit('Port %d indisponible : %s' % (a.port, e))
     arret = asyncio.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         asyncio.get_running_loop().add_signal_handler(sig, arret.set)
     verifier_dependances()
-    urls = adresses(a.port) if not a.local else ['http://127.0.0.1:%d' % a.port]
+    urls = adresses(a.port, garde.schema()) if not a.local else ['http://127.0.0.1:%d' % a.port]
     print('\n   Pour jouer depuis la tablette (même Wi-Fi), ouvre l\'une de ces adresses :\n')
     for u in urls:
         print('      ' + u)
     print()
     (RACINE / 'adresse-reseau.txt').write_text('\n'.join(urls) + '\n', encoding='utf-8')
+    garde.annoncer()
     if not a.sans_jeu:
         jeu.lancer_en_fond(jeu.demarrer())
     await arret.wait()

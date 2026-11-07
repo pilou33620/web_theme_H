@@ -82,6 +82,10 @@ tests/               bancs d'essai : python3 tests/test_serveur.py
 
 Les gestes ne passent pas par noVNC mais par un second client VNC minimal (`Entree`) : on contrôle ainsi le glisser, le clic droit et la paume.
 
+## Sécurité
+
+Sans `--local`, le serveur passe par `appairage.py`, copie identique de celui de web_suite : un autre appareil entre une fois le code d'appairage affiché dans le terminal et sur la carte du launcher. Un nom d'hôte inconnu et une adresse Internet sont refusés, et HTTPS est servi sur le même port (CA du poste à installer sur la tablette). Le relais du launcher ne demande pas de code.
+
 ## Tests
 
 `python3 tests/test_serveur.py` : routes, relais VNC, relais du son, injection de la souris et du clavier avec un faux serveur VNC ; et, si `Xvfb`, `x11vnc` et `python3-xlib` sont installés, toute la chaîne avec un faux jeu qui journalise les clics reçus.

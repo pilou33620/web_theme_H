@@ -11,6 +11,8 @@ import base64
 import json
 import os
 import shutil
+import socket
+import ssl
 import struct
 import sys
 import tempfile
@@ -18,9 +20,11 @@ import time
 import unittest
 import warnings
 from pathlib import Path
+from unittest import mock
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
+import appairage  # noqa: E402
 import server  # noqa: E402
 
 warnings.simplefilter('ignore', ResourceWarning)   # sockets de test fermés par la fin de la boucle
@@ -148,6 +152,83 @@ class TestConfigJeu(unittest.TestCase):
                 self.assertEqual(texte.count('debug = true'), 1)
             finally:
                 server.DONNEES = ancien
+
+
+async def brut(port, requete, tls=None):
+    lecture, ecriture = await asyncio.open_connection('127.0.0.1', port, ssl=tls)
+    ecriture.write(requete.encode())
+    await ecriture.drain()
+    tete = (await lecture.readuntil(b'\r\n\r\n')).decode('latin1')
+    ecriture.close()
+    return int(tete.split(' ')[1]), tete
+
+
+class TestGarde(unittest.IsolatedAsyncioTestCase):
+    """L'autre appareil est simulé en faisant croire à la garde que la requête ne vient pas de ce poste."""
+
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        patch = mock.patch.dict(os.environ, {'WEB_TOOLS_JETON_FICHIER': os.path.join(self.tmp.name, 'jeton.txt')})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.jeu = server.Jeu(1280, 720, 98, 1)
+        self.garde = appairage.Garde('TEST', afficher=lambda t: None)
+        self.srv = await asyncio.start_server(server.Serveur(self.jeu, self.garde).client, '127.0.0.1', 0)
+        self.port = self.srv.sockets[0].getsockname()[1]
+        self.addCleanup(self.srv.close)
+
+    def demande(self, methode, chemin, hote='127.0.0.1', corps='', **entetes):
+        lignes = ['%s %s HTTP/1.1' % (methode, chemin), 'Host: ' + hote, 'Content-Length: %d' % len(corps)]
+        lignes += ['%s: %s' % (k.replace('_', '-'), v) for k, v in entetes.items()]
+        return '\r\n'.join(lignes) + '\r\n\r\n' + corps
+
+    async def test_host(self):
+        self.assertEqual((await brut(self.port, self.demande('GET', '/', 'piege.example')))[0], 403)
+        self.assertEqual((await brut(self.port, self.demande('GET', '/')))[0], 200)     # ce poste, sans code
+
+    async def test_appareil_non_appaire(self):
+        with mock.patch.object(appairage.Garde, 'ce_poste', staticmethod(lambda h: False)):
+            code, tete = await brut(self.port, self.demande('GET', '/'))
+            self.assertEqual(code, 303)
+            self.assertIn(appairage.PAGE, tete)
+            self.assertEqual((await brut(self.port, self.demande('GET', '/api/status')))[0], 403)
+            self.assertEqual((await brut(self.port, self.demande('POST', '/api/arreter')))[0], 403)
+            self.assertEqual((await brut(self.port, self.demande('GET', '/vnc', Upgrade='websocket',
+                                                                 Sec_WebSocket_Key='abc')))[0], 403)
+            self.assertEqual((await brut(self.port, self.demande('GET', appairage.PAGE)))[0], 200)
+
+    async def test_bon_code_donne_le_cookie(self):
+        with mock.patch.object(appairage.Garde, 'ce_poste', staticmethod(lambda h: False)):
+            await brut(self.port, self.demande('GET', appairage.PAGE))
+            corps = json.dumps({'code': self.garde.code.code})
+            code, tete = await brut(self.port, self.demande('POST', appairage.ROUTE, corps=corps, X_Appairage='1'))
+            self.assertEqual(code, 200)
+            biscuit = next(l for l in tete.split('\r\n') if l.startswith('Set-Cookie')).split(' ')[1].rstrip(';')
+            self.assertEqual((await brut(self.port, self.demande('GET', '/', Cookie=biscuit)))[0], 200)
+
+    async def test_http_et_https_sur_le_meme_port(self):
+        self.garde.tls, raison = appairage.contexte_tls()
+        if not self.garde.tls:
+            self.skipTest(raison)
+        with socket.socket() as s:
+            s.bind(('127.0.0.1', 0))
+            port = s.getsockname()[1]
+        srv = await server.ouvrir_ecoute(server.Serveur(self.jeu, self.garde).client, '127.0.0.1', port, self.garde.tls)
+        self.addCleanup(srv.close)
+        client = ssl.create_default_context()
+        client.check_hostname, client.verify_mode = False, ssl.CERT_NONE
+        self.assertEqual((await brut(port, self.demande('GET', '/'), client))[0], 200)
+        self.assertEqual((await brut(port, self.demande('GET', '/')))[0], 200)          # ce poste : HTTP permis
+        self.assertEqual((await brut(port, self.demande('GET', appairage.CA)))[0], 200)
+        with mock.patch.object(appairage.Garde, 'ce_poste', staticmethod(lambda h: False)):
+            code, tete = await brut(port, self.demande('GET', '/'))                     # autre appareil : vers https
+            self.assertEqual(code, 307)
+            self.assertIn('https://127.0.0.1/', tete)
+            await brut(port, self.demande('GET', appairage.PAGE), client)
+            corps = json.dumps({'code': self.garde.code.code})
+            _, tete = await brut(port, self.demande('POST', appairage.ROUTE, corps=corps, X_Appairage='1'), client)
+            self.assertIn('Secure', tete)
 
 
 class TestServeur(unittest.IsolatedAsyncioTestCase):
