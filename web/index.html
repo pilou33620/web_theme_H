@@ -109,7 +109,7 @@ let stylet = 0;                            // les doigts sont ignorés jusqu'à 
 // ---------------------------------------------------------------- état du jeu et connexion
 
 async function api(chemin, post) {
-  try { const r = await fetch(chemin, { method: post ? 'POST' : 'GET', cache: 'no-store' }); return await r.json(); }
+  try { const r = await fetch(chemin, { method: post ? 'POST' : 'GET', headers: post ? { 'X-Theme': '1' } : {}, cache: 'no-store' }); return await r.json(); }
   catch { return null; }
 }
 

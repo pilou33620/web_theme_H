@@ -27,7 +27,7 @@ import sys
 import time
 import types
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 import appairage
 
@@ -578,15 +578,17 @@ class Serveur:
             if entetes.get('upgrade', '').lower() == 'websocket':
                 await self.websocket(lecture, ecriture, chemin, entetes)
             else:
-                ecriture.write(await self.http(methode, chemin))
+                ecriture.write(await self.http(methode, chemin, entetes))
                 await ecriture.drain()
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError, UnicodeDecodeError):
             pass
         finally:
             ecriture.close()
 
-    async def http(self, methode, chemin):
+    async def http(self, methode, chemin, entetes):
         if chemin.startswith('/api/'):
+            if methode == 'POST' and entetes.get('x-theme') != '1':     # un autre site ne peut pas l'ajouter
+                return reponse(403, 'Requête refusée')
             actions = {'/api/demarrer': self.jeu.demarrer, '/api/arreter': self.jeu.arreter,
                        '/api/redemarrer': self.jeu.redemarrer}
             if chemin == '/api/status' and methode == 'GET':
@@ -609,6 +611,10 @@ class Serveur:
 
     async def websocket(self, lecture, ecriture, chemin, entetes):
         cle = entetes.get('sec-websocket-key')
+        origine = entetes.get('origin')
+        if origine and urlsplit(origine).netloc.lower() != entetes.get('host', '').lower():
+            ecriture.write(reponse(403, 'Requête refusée (autre site)'))     # un WebSocket ignore la règle de même origine
+            return
         if chemin not in ('/vnc', '/input', '/son') or not cle:
             ecriture.write(reponse(404, 'Introuvable'))
             return

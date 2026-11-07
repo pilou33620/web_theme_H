@@ -91,7 +91,7 @@ async def ouvrir_ws(port, chemin):
 
 async def http(port, methode, chemin):
     lecture, ecriture = await asyncio.open_connection('127.0.0.1', port)
-    ecriture.write(('%s %s HTTP/1.1\r\nHost: x\r\n\r\n' % (methode, chemin)).encode())
+    ecriture.write(('%s %s HTTP/1.1\r\nHost: x\r\nX-Theme: 1\r\n\r\n' % (methode, chemin)).encode())
     await ecriture.drain()
     brut = await asyncio.wait_for(lecture.read(), 5)
     ecriture.close()
@@ -254,6 +254,12 @@ class TestServeur(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await http(self.port, 'GET', '/../server.py'))[0], 404)
         self.assertEqual((await http(self.port, 'GET', '/inconnu'))[0], 404)
         self.assertEqual((await http(self.port, 'DELETE', '/'))[0], 405)
+
+    async def test_ecriture_depuis_un_autre_site(self):
+        requete = 'POST /api/arreter HTTP/1.1\r\nHost: x\r\n\r\n'
+        self.assertEqual((await brut(self.port, requete))[0], 403)
+        ws = 'GET /vnc HTTP/1.1\r\nHost: x\r\nOrigin: https://piege.example\r\nUpgrade: websocket\r\nSec-WebSocket-Key: abc\r\n\r\n'
+        self.assertEqual((await brut(self.port, ws))[0], 403)
 
     async def test_relais_vnc(self):
         tete, lecture, ecriture = await ouvrir_ws(self.port, '/vnc')
