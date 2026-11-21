@@ -566,7 +566,7 @@ fn pomper_son(mut tube: File, arret: Arc<AtomicBool>, auditeurs: Auditeurs) {
     while !arret.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_millis(20));
         let du = (t0.elapsed().as_secs_f64() * debit as f64) as i64 - lus;
-        let n = if du > 0 { tube.read(&mut tampon[..(du as usize).min(tampon.len())]).unwrap_or(0) } else { 0 };
+        let n = if du > 0 { tube.read(&mut tampon[..(du as usize).min(debit as usize)]).unwrap_or(0) } else { 0 };
         lus += n as i64;
         if du > debit / 5 {
             (t0, lus) = (Instant::now(), 0); // 0,2 s de retard : jeu en pause ou pas encore de son
