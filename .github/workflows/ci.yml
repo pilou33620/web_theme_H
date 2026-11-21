@@ -1,0 +1,19 @@
+name: bancs d'essai
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  essais:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # moteur et serveur : fichiers du jeu, config de CorsixTH, routes, garde, relais VNC,
+      # son et gestes par WebSocket (avec un faux serveur VNC), ligne de commande
+      - name: Moteur et serveur (Rust)
+        run: cargo test -p theme_h 2>&1 | tail -40; exit ${PIPESTATUS[0]}

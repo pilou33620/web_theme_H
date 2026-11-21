@@ -1,0 +1,19 @@
+[package]
+name = "theme_h"
+version = "0.1.0"
+edition = "2021"
+description = "Theme Hospital (CorsixTH) dans le navigateur : lance Xvfb, x11vnc et le jeu, relaie écran, gestes et son"
+
+[lib]
+doctest = false
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+# Serveur HTTP/HTTPS, appairage et WebSocket : communs aux web tools (dépôt web_suite)
+web_tools_commun = { git = "https://github.com/pilou33620/web_suite", rev = "f447c8cf92140a2584f3de31bf2c8f814a788fa8" }
+# tube du son (mkfifo, taille du tube), signaux aux groupes de processus, sans unsafe
+nix = { version = "0.29", features = ["fs", "signal", "process"] }
+# TH_JEU, TH_XVFB, TH_X11VNC : découpés comme une ligne de shell (shlex.split de Python)
+shlex = "1"
+# arrêt propre sur SIGTERM (launcher) et Ctrl+C : le jeu et son écran sont arrêtés avec le serveur
+signal-hook = "0.3"

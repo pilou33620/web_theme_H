@@ -1,0 +1,53 @@
+name: exécutables
+
+# Compile l'exécutable du serveur et le dépose dans la publication « binaires » :
+# theme_h-<système>.tar.gz et son empreinte SHA-256, que binaires.sh prend sur un poste sans
+# cargo (Raspberry Pi). Linux seulement : le jeu tourne sur un écran virtuel X (Xvfb).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compiler:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # musl : exécutables statiques, indépendants de la glibc du poste (Raspberry Pi OS)
+          - { os: ubuntu-latest, cible: x86_64-unknown-linux-musl, nom: linux-x86_64 }
+          - { os: ubuntu-24.04-arm, cible: aarch64-unknown-linux-musl, nom: linux-aarch64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup target add ${{ matrix.cible }}
+
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - run: cargo build --release -p theme_h --bins --target ${{ matrix.cible }}
+
+      - name: Archive (l'exécutable et le commit dont il vient)
+        shell: bash
+        run: |
+          mkdir bin
+          find target/${{ matrix.cible }}/release -maxdepth 1 -type f -perm -u+x -exec cp {} bin/ \;
+          git rev-parse HEAD > bin/commit
+          tar -czf theme_h-${{ matrix.nom }}.tar.gz -C bin .
+
+      - name: Publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # les compilations arrivent ensemble : une seule crée la publication
+          gh release view binaires >/dev/null 2>&1 \
+            || gh release create binaires --title "Exécutables" \
+                 --notes "Exécutables du serveur, recompilés à chaque envoi sur main, pris par binaires.sh." \
+            || true
+          f=theme_h-${{ matrix.nom }}.tar.gz
+          sha256sum "$f" | cut -d" " -f1 > "$f.sha256"
+          gh release upload binaires "$f" "$f.sha256" --clobber

@@ -5,3 +5,7 @@ vendor/
 adresse-reseau.txt
 theme_hospital/*
 !theme_hospital/LISEZMOI.txt
+
+# Rust : compilation et exécutables (compilés ici ou téléchargés)
+/target/
+/bin/
