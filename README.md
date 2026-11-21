@@ -1,6 +1,6 @@
 # web_theme_hospital — Theme Hospital sur la tablette
 
-Un petit serveur Python lance **Theme Hospital** (via [CorsixTH](https://corsixth.com), le moteur libre) sur un Raspberry Pi et l'affiche dans le navigateur de la tablette, au doigt ou au stylet. Aucune bibliothèque Python à installer.
+Un petit serveur (en Rust) lance **Theme Hospital** (via [CorsixTH](https://corsixth.com), le moteur libre) sur un Raspberry Pi et l'affiche dans le navigateur de la tablette, au doigt ou au stylet. Linux seulement (Raspberry Pi OS, Debian, Ubuntu).
 
 ## Installation (Raspberry Pi 4, une seule fois)
 
@@ -10,7 +10,9 @@ cd web_theme_H
 sh raspberry/installer.sh
 ```
 
-Le script installe `xvfb`, `x11vnc`, `novnc`, CorsixTH, puis crée le service `web_theme_hospital` : le jeu démarre à chaque allumage du Raspberry. (`sh raspberry/installer.sh --dependances` installe seulement les dépendances.)
+Le script installe `curl`, `xvfb`, `x11vnc`, `novnc`, CorsixTH, puis crée le service `web_theme_hospital` : le jeu démarre à chaque allumage du Raspberry.
+
+Rust n'est pas nécessaire : au premier lancement, `lancer.sh` télécharge l'exécutable du serveur (publication « binaires » du dépôt, compilée par la CI pour Linux x86_64 et aarch64, vérifiée par son empreinte SHA-256) dans `bin/`, puis le reprend à chaque nouvelle version. Si `cargo` est installé, il le compile sur place à la place. (`sh raspberry/installer.sh --dependances` installe seulement les dépendances.)
 
 Avec [web_launcher](https://github.com/pilou33620/web_launcher) : installe seulement les dépendances (`--dependances`), sans le service ; le jeu se démarre et s'arrête depuis sa carte « Theme Hospital ».
 
@@ -55,7 +57,7 @@ Pendant l'usage du stylet, la paume posée sur l'écran est ignorée. Un anneau 
 
 ## Options du serveur
 
-`--port 8791` · `--local` (cette machine seulement) · `--resolution 1024x768` · `--sans-jeu` (ne pas lancer le jeu au démarrage) · `--affichage 99` · `--vnc-port 5999`
+`--port 8791` · `--local` (cette machine seulement) · `--lan` (réseau local : c'est déjà le défaut) · `--resolution 1024x768` · `--sans-jeu` (ne pas lancer le jeu au démarrage) · `--affichage 99` · `--vnc-port 5999`. Acceptées sans effet, pour web_launcher : `--sans-navigateur`, `--sans-pause`, `--sans-maj`. Les valeurs s'écrivent aussi `--port=8791`. Variables d'essai : `TH_JEU`, `TH_XVFB`, `TH_X11VNC` (autre commande), `NOVNC_DIR`.
 
 La résolution par défaut (4:3) remplit l'écran d'un iPad ; pour une tablette 16:9, prends `--resolution 1280x720`. Sur un Pi 4, `--resolution 800x600` allège le flux si l'image saccade.
 
@@ -65,27 +67,29 @@ La résolution par défaut (4:3) remplit l'écran d'un iPad ; pour une tablette 
 - **Paysage conseillé** : en paysage, les boutons passent en colonne à droite pour laisser libre la barre du bas du jeu ; en portrait, le jeu est plus petit.
 - **Une seule partie à la fois** : tous les appareils connectés voient et commandent le même jeu.
 - **Pas de mot de passe** : garde-le sur le réseau de la maison, ne l'ouvre pas sur Internet.
+- **x11vnc refuse de démarrer dans une session Wayland** (variable `WAYLAND_DISPLAY` posée, par exemple dans un terminal du bureau) : lance le serveur par le service, par web_launcher, ou par `env -u WAYLAND_DISPLAY ./lancer.sh`.
 - Si le jeu plante ou si tu le quittes depuis son menu, la page propose « Démarrer ». Les journaux sont dans `logs/` (`xvfb.log`, `x11vnc.log`, `jeu.log`).
 - Commandes utiles : `sudo systemctl status web_theme_hospital`, `sudo systemctl restart web_theme_hospital`, `journalctl -u web_theme_hospital -f`.
 
 ## Comment ça marche
 
 ```
-server.py            serveur HTTP + WebSocket (Python standard) ; lance et surveille Xvfb, x11vnc, CorsixTH ;
-                     /vnc relaie l'écran vers noVNC ; /input transforme les gestes en souris/clavier VNC ;
-                     /son : le jeu écrit son son dans un tube (sortie « disk » de SDL), lu au rythme du temps réel
+rust/theme_h/        le serveur (Rust) : lib.rs lance et surveille Xvfb, x11vnc, CorsixTH, lit le son, injecte les gestes ;
+                     serveur.rs : routes, WebSocket (/vnc relaie l'écran vers noVNC ; /input transforme les gestes
+                     en souris/clavier VNC ; /son : le jeu écrit son son dans un tube, sortie « disk » de SDL,
+                     lu au rythme du temps réel), options
+lancer.sh            obtient l'exécutable (binaires.sh) puis le lance
 web/index.html       la page : affichage noVNC (lecture seule), gestes doigt/stylet/souris, touches à l'écran, son (Web Audio)
 raspberry/           installer.sh : dépendances + service systemd ; corsixth.sh : CorsixTH à jour depuis git
 theme_hospital/      le dossier du jeu, à remplir (non suivi par git)
-tests/               bancs d'essai : python3 tests/test_serveur.py
 ```
 
 Les gestes ne passent pas par noVNC mais par un second client VNC minimal (`Entree`) : on contrôle ainsi le glisser, le clic droit et la paume.
 
 ## Sécurité
 
-Sans `--local`, le serveur passe par `appairage.py`, copie identique de celui de web_suite : un autre appareil entre une fois le code d'appairage affiché dans le terminal et sur la carte du launcher. Un nom d'hôte inconnu et une adresse Internet sont refusés, et HTTPS est servi sur le même port (CA du poste à installer sur la tablette). Le relais du launcher ne demande pas de code.
+Sans `--local`, le serveur passe par la garde de la caisse commune `web_tools_commun` (dépôt web_suite) : un autre appareil entre une fois le code d'appairage affiché dans le terminal et sur la carte du launcher. Un nom d'hôte inconnu et une adresse Internet sont refusés, et HTTPS est servi sur le même port (CA du poste à installer sur la tablette). Le relais du launcher ne demande pas de code.
 
 ## Tests
 
-`python3 tests/test_serveur.py` : routes, relais VNC, relais du son, injection de la souris et du clavier avec un faux serveur VNC ; et, si `Xvfb`, `x11vnc` et `python3-xlib` sont installés, toute la chaîne avec un faux jeu qui journalise les clics reçus.
+`cargo test -p theme_h` (lancé par la CI à chaque envoi) : fichiers du jeu, config de CorsixTH, ligne de commande, routes, garde (appareil non appairé), relais VNC, relais du son, injection de la souris et du clavier avec un faux serveur VNC.

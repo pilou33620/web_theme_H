@@ -19,7 +19,7 @@ fi
 
 echo "==> Dépendances"
 sudo apt-get update
-sudo apt-get install -y python3 xvfb x11vnc novnc
+sudo apt-get install -y curl xvfb x11vnc novnc
 if ! command -v corsix-th >/dev/null 2>&1 && ! command -v CorsixTH >/dev/null 2>&1 && ! command -v corsixth >/dev/null 2>&1; then
   sudo apt-get install -y corsix-th || sudo snap install corsixth || {
     echo "!!! CorsixTH n'a pu être installé automatiquement (paquet corsix-th ou snap corsixth)."
@@ -45,7 +45,7 @@ Wants=network-online.target
 [Service]
 User=$(id -un)
 WorkingDirectory=$DIR
-ExecStart=/usr/bin/python3 $DIR/server.py --port $PORT
+ExecStart=/bin/sh $DIR/lancer.sh --port $PORT
 Restart=on-failure
 RestartSec=5
 
