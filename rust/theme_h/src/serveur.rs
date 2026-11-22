@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use web_tools_commun::appairage::{self, Garde};
-use web_tools_commun::serveur::{decoder_url, Duplex, Reponse, Requete, Serveur, Service};
+use web_tools_commun::serveur::{decoder_chemin, Duplex, Reponse, Requete, Serveur, Service};
 
 use crate::{commande_jeu, dans_le_path, prendre, trouver_novnc, Jeu};
 
@@ -63,7 +63,7 @@ fn type_mime(p: &Path) -> Option<&'static str> {
 
 /// Fichier de `base` demandé par `chemin`, jamais en dehors de `base` (ni fichier caché).
 pub fn fichier_sous(base: &Path, chemin: &str) -> Option<PathBuf> {
-    let rel = decoder_url(chemin.trim_start_matches('/'));
+    let rel = decoder_chemin(chemin.trim_start_matches('/'));
     let p = Path::new(&rel);
     if p.components().any(|c| !matches!(c, Component::Normal(n) if !n.to_string_lossy().starts_with('.'))) {
         return None;

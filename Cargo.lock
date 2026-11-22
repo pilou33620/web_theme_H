@@ -633,7 +633,7 @@ dependencies = [
 [[package]]
 name = "web_tools_commun"
 version = "0.1.0"
-source = "git+https://github.com/pilou33620/web_suite?rev=f447c8cf92140a2584f3de31bf2c8f814a788fa8#f447c8cf92140a2584f3de31bf2c8f814a788fa8"
+source = "git+https://github.com/pilou33620/web_suite?rev=bc1f42ca77df7ccfc415a93018640058c82e2efe#bc1f42ca77df7ccfc415a93018640058c82e2efe"
 dependencies = [
  "base64",
  "chrono",
