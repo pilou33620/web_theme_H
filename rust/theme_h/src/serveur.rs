@@ -17,11 +17,13 @@ use std::time::Duration;
 
 use serde_json::Value;
 use web_tools_commun::appairage::{self, Garde};
+use web_tools_commun::production;
 use web_tools_commun::serveur::{decoder_chemin, Duplex, Reponse, Requete, Serveur, Service};
 
 use crate::{commande_jeu, dans_le_path, prendre, trouver_novnc, Jeu};
 
 pub const PORT: u16 = 8791;
+const DEPOT: &str = "https://github.com/pilou33620/web_theme_H";
 
 /// La racine de l'outil (web/, theme_hospital/, donnees/) : le dossier courant s'il contient
 /// web/index.html, sinon le premier dossier au-dessus de l'exécutable qui le contient.
@@ -371,13 +373,30 @@ pub fn lire_args(argv: &[String]) -> Result<Args, String> {
             "--lan" => a.lan = true, // ouvert au réseau local : c'est déjà le défaut
             "--local" => a.local = true,
             "--sans-jeu" => a.sans_jeu = true,
-            // sans effet : ce serveur n'ouvre pas de navigateur, ne pose pas de question et ne se met pas à jour seul
+            // sans effet : ce serveur n'ouvre pas de navigateur et ne pose pas de question ;
+            // --sans-maj est lu par maj_production (copie de production)
             "--sans-navigateur" | "--sans-pause" | "--sans-maj" => {}
             _ => return Err(format!("option inconnue : {x}")),
         }
         i += 1;
     }
     Ok(a)
+}
+
+/// Copie de production (archive theme_h-prod, sans git) : mise à jour depuis la publication
+/// « binaires » (§4.1 bis des règles). Sauf --sans-maj, et sauf à la relance qui suit une mise à jour.
+fn maj_production(argv: &[String], racine: &Path) {
+    let sans_maj = argv.iter().any(|x| x == "--sans-maj");
+    if sans_maj || std::env::var_os("THEME_H_DEJA_MAJ").is_some() || !production::est_copie_prod(racine) {
+        return;
+    }
+    match production::mettre_a_jour(DEPOT, "theme_h", racine, &|t| println!("{t}")) {
+        // demarrer_WEB_THEME_H relance la nouvelle version ; lancé sans lui, on continue avec celle-ci
+        Ok(true) if std::env::var_os("THEME_H_RELANCEUR").is_some() => std::process::exit(production::CODE_MIS_A_JOUR),
+        Ok(true) => println!("Mis à jour : relancez le serveur pour en profiter."),
+        Ok(false) => {}
+        Err(e) => println!("[X] {e}"), // l'installation actuelle est intacte : on démarre
+    }
 }
 
 fn verifier_dependances(racine: &Path) {
@@ -404,6 +423,7 @@ pub fn main() {
     };
     let racine = racine().to_path_buf();
     let _ = std::env::set_current_dir(&racine);
+    maj_production(&argv, &racine);
     let reseau = !args.local;
     let srv = match Serveur::ouvrir(args.port, reseau, 1) {
         Ok(s) => s,

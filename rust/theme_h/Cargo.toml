@@ -9,8 +9,8 @@ doctest = false
 
 [dependencies]
 serde_json = { version = "1", features = ["preserve_order"] }
-# Serveur HTTP/HTTPS, appairage et WebSocket : communs aux web tools (dépôt web_suite)
-web_tools_commun = { git = "https://github.com/pilou33620/web_suite", rev = "bc1f42ca77df7ccfc415a93018640058c82e2efe" }
+# Serveur HTTP/HTTPS, appairage, WebSocket et mise à jour d'une copie de production : communs aux web tools (dépôt web_suite)
+web_tools_commun = { git = "https://github.com/pilou33620/web_suite", rev = "a9d9d90638718302b92ee862bbd415c16bb218fc", features = ["production"] }
 # tube du son (mkfifo, taille du tube), signaux aux groupes de processus, sans unsafe
 nix = { version = "0.29", features = ["fs", "signal", "process"] }
 # TH_JEU, TH_XVFB, TH_X11VNC : découpés comme une ligne de shell (shlex.split de Python)

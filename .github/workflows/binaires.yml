@@ -1,8 +1,12 @@
 name: exécutables
 
-# Compile l'exécutable du serveur et le dépose dans la publication « binaires » :
-# theme_h-<système>.tar.gz et son empreinte SHA-256, que binaires.sh prend sur un poste sans
-# cargo (Raspberry Pi). Linux seulement : le jeu tourne sur un écran virtuel X (Xvfb).
+# Compile l'exécutable du serveur et le dépose dans la publication « binaires », chaque archive
+# avec son empreinte SHA-256. Linux seulement : le jeu tourne sur un écran virtuel X (Xvfb).
+# - theme_h-<système>.tar.gz : l'exécutable seul, que scripts/binaires.sh prend sur un clone git
+#   sans cargo (Raspberry Pi) ;
+# - theme_h-prod-<système>.tar.gz : la production, sans git ni sources — l'exécutable, la page,
+#   demarrer_WEB_THEME_H.sh, scripts/, raspberry/ (installation) et le README. Elle se met à jour
+#   seule (web_tools_commun::production).
 on:
   push:
     branches: [main]
@@ -38,6 +42,32 @@ jobs:
           git rev-parse HEAD > bin/commit
           tar -czf theme_h-${{ matrix.nom }}.tar.gz -C bin .
 
+      - name: Archive de production (exécutable, page, scripts de démarrage et d'installation)
+        shell: bash
+        run: |
+          P=prod/theme_h
+          mkdir -p $P/theme_hospital
+          cp -r bin web scripts raspberry $P/ && cp demarrer_WEB_THEME_H.sh README.md $P/
+          # où déposer les fichiers du jeu (le dossier lui-même n'est jamais écrasé)
+          cp theme_hospital/LISEZMOI.txt $P/theme_hospital/
+          tar -czf theme_h-prod-${{ matrix.nom }}.tar.gz -C prod theme_h
+
+      # l'archive de production, décompressée dans un dossier vide, doit démarrer et servir la page
+      - name: Essai de l'archive de production
+        if: matrix.nom == 'linux-x86_64'
+        run: |
+          mkdir essai && tar -xzf theme_h-prod-linux-x86_64.tar.gz -C essai
+          cd essai/theme_h
+          test ! -e .git && test ! -e Cargo.toml && test ! -e rust
+          sh demarrer_WEB_THEME_H.sh --port 18791 --local --sans-jeu --sans-maj > ../journal.txt 2>&1 &
+          for i in $(seq 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18791/ || true)
+            [ "$code" = 200 ] && break
+            sleep 1
+          done
+          pkill -x theme_h || true
+          echo "réponse : $code"; [ "$code" = 200 ] || { cat ../journal.txt; exit 1; }
+
       - name: Publication
         shell: bash
         env:
@@ -46,8 +76,9 @@ jobs:
           # les compilations arrivent ensemble : une seule crée la publication
           gh release view binaires >/dev/null 2>&1 \
             || gh release create binaires --title "Exécutables" \
-                 --notes "Exécutables du serveur, recompilés à chaque envoi sur main, pris par binaires.sh." \
+                 --notes "Exécutables du serveur, recompilés à chaque envoi sur main. theme_h-<système> : pris par scripts/binaires.sh. theme_h-prod-<système> : la production complète, à décompresser puis lancer par demarrer_WEB_THEME_H.sh." \
             || true
-          f=theme_h-${{ matrix.nom }}.tar.gz
-          sha256sum "$f" | cut -d" " -f1 > "$f.sha256"
-          gh release upload binaires "$f" "$f.sha256" --clobber
+          for f in theme_h-${{ matrix.nom }}.tar.gz theme_h-prod-${{ matrix.nom }}.tar.gz; do
+            sha256sum "$f" | cut -d" " -f1 > "$f.sha256"
+            gh release upload binaires "$f" "$f.sha256" --clobber
+          done

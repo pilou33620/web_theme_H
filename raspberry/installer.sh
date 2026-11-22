@@ -2,7 +2,7 @@
 # Installe ce qu'il faut sur un Raspberry Pi (Raspberry Pi OS, Debian, Ubuntu), puis le service.
 #   sh raspberry/installer.sh                installe les dépendances + le service (démarrage à l'allumage)
 #   sh raspberry/installer.sh 8800           idem, sur un autre port (défaut 8791)
-#   sh raspberry/installer.sh --dependances  seulement les dépendances (on lance alors ./lancer.sh à la main)
+#   sh raspberry/installer.sh --dependances  seulement les dépendances (on lance alors ./demarrer_WEB_THEME_H.sh à la main)
 #   sh raspberry/installer.sh --retirer      désinstalle le service
 set -e
 DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -32,7 +32,7 @@ if [ ! -f /usr/share/novnc/core/rfb.js ] && [ ! -f "$DIR/vendor/novnc/core/rfb.j
   curl -fsSL https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz | tar xz --strip-components=1 -C "$DIR/vendor/novnc"
 fi
 
-[ "$1" = "--dependances" ] && { echo "Dépendances installées. Lance : ./lancer.sh"; exit 0; }
+[ "$1" = "--dependances" ] && { echo "Dépendances installées. Lance : ./demarrer_WEB_THEME_H.sh"; exit 0; }
 
 PORT="${1:-8791}"
 echo "==> Service systemd ($SERVICE, port $PORT)"
@@ -45,7 +45,7 @@ Wants=network-online.target
 [Service]
 User=$(id -un)
 WorkingDirectory=$DIR
-ExecStart=/bin/sh $DIR/lancer.sh --port $PORT
+ExecStart=/bin/sh $DIR/demarrer_WEB_THEME_H.sh --port $PORT
 Restart=on-failure
 RestartSec=5
 

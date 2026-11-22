@@ -16,4 +16,4 @@ jobs:
       # moteur et serveur : fichiers du jeu, config de CorsixTH, routes, garde, relais VNC,
       # son et gestes par WebSocket (avec un faux serveur VNC), ligne de commande
       - name: Moteur et serveur (Rust)
-        run: cargo test -p theme_h 2>&1 | tail -40; exit ${PIPESTATUS[0]}
+        run: cargo test -p theme_h --locked 2>&1 | tail -40; exit ${PIPESTATUS[0]}

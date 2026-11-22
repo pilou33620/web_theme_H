@@ -1,5 +1,5 @@
 #!/bin/sh
-# Met l'exécutable du serveur dans bin/ (à inclure par « . ./binaires.sh » depuis la racine).
+# Met l'exécutable du serveur dans bin/ (à inclure par « . ./scripts/binaires.sh » depuis la racine).
 # Avec cargo sur le poste : compilé ici, toujours à jour avec les sources.
 # Sinon : téléchargé depuis GitHub (publication « binaires », compilée par la CI à chaque
 # envoi sur main), une fois par version : bin/commit dit de quelle version il vient.
@@ -15,6 +15,8 @@ empreinte_juste() {
 }
 
 obtenir_binaires() {
+  # copie de production (publication « binaires », sans les sources) : l'exécutable y est déjà
+  if [ ! -f Cargo.toml ] && [ -x bin/theme_h ]; then return 0; fi
   mkdir -p bin
   if command -v cargo >/dev/null 2>&1; then
     cargo build --release -p theme_h --bins || return 1
